@@ -14,6 +14,7 @@
 # load packages
 #source("~/ADBP/R/simulate_adbp_ntaxa.R") #as it's own package eventually..? or incorporate?
 source("~/ADBP/R/simulate_adbp_origin.R")
+source("models/gene_expression.R")
 library(ape)
 
 
