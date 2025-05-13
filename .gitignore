@@ -1,0 +1,31 @@
+# History files
+.Rhistory
+.Rapp.history
+
+# Session data
+.RData
+
+# User-specific files
+.Ruserdata
+
+# IDE files
+.Rproj.user/
+.Rproj.user/*
+*.Rproj
+
+# Build and generated files
+.DS_Store
+.Rcheck/
+.Rbuildignore
+*.tar.gz
+*.zip
+
+# Vignette and documentation build artifacts
+vignettes/*.html
+vignettes/*.pdf
+vignettes/*.docx
+
+# Manually created documentation artifacts
+man/*.Rd
+/doc/
+/Meta/

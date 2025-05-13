@@ -1,0 +1,84 @@
+---
+title: "Basic Tree Simulation"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Basic Tree Simulation}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup, message=FALSE}
+library(scTreeSim)
+# these should be loaded as dependencies...fix
+library(assertthat)
+library(treeio)
+library(dplyr)
+library(ape)
+set.seed(10)
+
+```
+# Single-Type trees
+Two options: by time of origin or by number of (extant) taxa
+```{r}
+shape <- 100
+av_lifetime <- 1
+d <- 0.1
+scale <- av_lifetime/shape
+t_or <- 6
+ntaxa <- 2^6 
+# simulate:
+dat1 <- sim_adb_origin_complete(t_or, scale, shape, d)
+dat2 <- sim_adb_ntaxa_complete(ntaxa, scale, shape,d)
+```
+## Visualize
+ Note: extinct lineages are showing
+  
+```{r, fig.show="hold", out.width="40%"}
+plot(dat1@phylo, show.tip.label=FALSE, root.edge=TRUE)
+plot(dat2@phylo, show.tip.label=FALSE, root.edge=TRUE)
+```
+
+## Sampled Tree
+ this also prunes extinct lineages
+
+```{r, fig.show="hold", out.width="40%"}
+rho <- 0.5 # sampling at present
+dat1 <- sim_adb_origin_samp(t_or, scale, shape, d, rho)
+dat2 <- sim_adb_ntaxa_samp(ntaxa, scale, shape, d, rho)
+
+plot(dat1@phylo,show.tip.label=FALSE, root.edge=TRUE)
+#plot(dat2@phylo,show.tip.label=FALSE, root.edge=TRUE) # getting NULL?
+
+```
+
+# Multi-Type trees
+
+```{r, echo=TRUE}
+
+# Set up params
+ntype <- 2
+origin_type <- 0
+shape <- c(100,10)
+av_lifetime <- c(1,1)
+scale <- av_lifetime/shape
+rho <- 0.8
+t_or <-7 
+d <- rep(0.01, ntype)
+# transition matrices
+r <- 0.1
+Xi_as <- matrix(c(0.0, 0.0, r, 0.0), nrow=ntype, ncol=ntype)
+Xi_s <- matrix(c(1-2*r, 0.0, 0.0, 1.0), nrow=ntype, ncol=ntype)
+
+dat <- sim_adb_origin_samp(t_or, scale,shape,d,rho,origin_type,Xi_as=Xi_as, Xi_s=Xi_s)
+
+plot(dat@phylo, show.tip.label=FALSE, root.edge=TRUE)
+# plot with node/tip types?
+
+```
