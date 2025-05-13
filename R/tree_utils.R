@@ -1,11 +1,11 @@
 #' Prune tree
-#' @param obj S4 object with @phylo class 
+#' @param obj treedata object 
 #' @param rho sampling probability (at present only)
 prune_tree <- function(obj, rho, min_tips){
 
   # prune dead particles
-  dead_nodes = obj %>% as_tibble %>% filter(status == 0) %>% pull(label)
-  phylogeny = drop.tip(obj@phylo, dead_nodes)
+  dead_nodes = obj %>% as_tibble %>% dplyr::filter(status == 0) %>% pull(label)
+  phylogeny = ape::drop.tip(obj@phylo, dead_nodes)
   if (is.null(phylogeny)) {
     message('All particles died! Try another seed.')
     return(NULL)
@@ -18,7 +18,7 @@ prune_tree <- function(obj, rho, min_tips){
     message('Not enough tips sampled! Try another seed.')
     return(NULL)
   }
-  phylogeny = drop.tip(phylogeny, tips[!sampled_tips])
+  phylogeny = ape::drop.tip(phylogeny, tips[!sampled_tips])
 #  phylogeny$tip.label = as.character(c(1:length(phylogeny@phylo$tip.label)))
   
   # remove height from data for exporting tree

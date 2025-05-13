@@ -9,7 +9,7 @@
 #' @param Xi_as matrix of asymetric type transition probabilities
 #' @param Xi_s matrix of symetric type transition probabilities
 #' @export
-sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1)) {
+sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), min_tips=2) {
   # assert that all inputs are correct
   ntypes = length(a)
   assert_that(all(c(length(b) == ntypes, length(d) == ntypes, 
@@ -44,7 +44,7 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
 #' @param Xi_as matrix of asymetric type transition probabilities
 #' @param Xi_s matrix of symetric type transition probabilities
 #' @export
-sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type=0, Xi_as=matrix(0), Xi_s=matrix(0)) {
+sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type=0, Xi_as=matrix(0), Xi_s=matrix(0), min_tips=2) {
   
   # initialize
   edges = matrix(nrow = 0, ncol = 2)
