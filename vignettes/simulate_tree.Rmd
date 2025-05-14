@@ -17,11 +17,7 @@ knitr::opts_chunk$set(
 ```{r setup, message=FALSE}
 library(scTreeSim)
 library(ggtree)
-# these should be loaded as dependencies...fix
-library(assertthat)
-library(treeio)
-library(dplyr)
-library(ape)
+library(dplyr)#fix
 set.seed(12)
 
 ```

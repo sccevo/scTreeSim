@@ -5,7 +5,7 @@
 prune_tree <- function(obj, rho, min_tips){
 
   # prune dead particles
-  dead_nodes = obj %>% as_tibble %>% dplyr::filter(status == 0) %>% pull(label)
+  dead_nodes = obj %>% tibble::as_tibble() %>% dplyr::filter(status == 0) %>% dplyr::pull(label)
   obj = treeio::drop.tip(obj, dead_nodes)
 
   if (is.null(obj@phylo)) {
