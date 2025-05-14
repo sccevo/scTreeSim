@@ -107,7 +107,7 @@ sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type=0, Xi_as=matrix(0
       
       # to be processed, sort by height
       events = dplyr::bind_rows(events, left_node, right_node) 
-      events = events %>% arrange(height)
+      events = events %>% dplyr::arrange(height)
       
       # add child relationships and append the current edges and edge lengths
       nodes[event$id, c("leftchild", "rightchild")] = c(left_id, right_id)
