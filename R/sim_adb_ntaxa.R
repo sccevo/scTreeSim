@@ -17,7 +17,7 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
                     ntaxa >= 2, origin_type %in% c(0:ntypes),
                     d >= 0, d < 1, rho > 0, rho <= 1)),
               msg = 'The inputs do not have proper dimensions or values. Please check all parameters!')
-  assert_that(all(sapply(seq(1, ntypes), function(i) {sum(2*Xi_as[i, ]) + sum(Xi_s[i, ]) == 1})),
+  assert_that(all(sapply(seq(1, ntypes), function(i) {all.equal(sum(2*Xi_as[i, ]) + sum(Xi_s[i, ]), 1.)})),
               msg = 'The transition probabilities do not some to 1. Please check!')
   
   # estimate the number of taxa in the full tree

@@ -1,32 +1,27 @@
 #' Prune tree
 #' @param obj treedata object 
 #' @param rho sampling probability (at present only)
+#' @param min_tips min number of tips req'd in final tree
 prune_tree <- function(obj, rho, min_tips){
 
   # prune dead particles
   dead_nodes = obj %>% as_tibble %>% dplyr::filter(status == 0) %>% pull(label)
-  phylogeny = ape::drop.tip(obj@phylo, dead_nodes)
-  if (is.null(phylogeny)) {
+  obj = treeio::drop.tip(obj, dead_nodes)
+
+  if (is.null(obj@phylo)) {
     message('All particles died! Try another seed.')
     return(NULL)
   }
-
+    
   # prune unsampled particles
-  tips = phylogeny$tip.label
+  tips = obj@phylo$tip.label
   sampled_tips = sample(c(TRUE, FALSE), length(tips), prob = c(rho, 1 - rho), replace = TRUE)
   if (sum(sampled_tips) < min_tips) {
     message('Not enough tips sampled! Try another seed.')
     return(NULL)
   }
-  phylogeny = ape::drop.tip(phylogeny, tips[!sampled_tips])
-#  phylogeny$tip.label = as.character(c(1:length(phylogeny@phylo$tip.label)))
+  obj = treeio::drop.tip(obj, tips[!sampled_tips])
   
-  # remove height from data for exporting tree
-  #phylogeny@data = phylogeny@data %>% select(-status)
-                                             
-  # keep origin in final object
- # phylogeny@phylo$origin = tree@phylo$origin
-  obj@phylo = phylogeny
   return(obj)
 
 }
