@@ -3,7 +3,8 @@
 #' @param rho sampling probability (at present only)
 #' @param min_tips min number of tips req'd in final tree
 prune_tree <- function(obj, rho, min_tips){
-
+  # get root edge
+  stem = obj@phylo$root.edge
   # prune dead particles
   dead_nodes = obj %>% tibble::as_tibble() %>% dplyr::filter(status == 0) %>% dplyr::pull(label)
   obj = treeio::drop.tip(obj, dead_nodes)
@@ -21,7 +22,9 @@ prune_tree <- function(obj, rho, min_tips){
     return(NULL)
   }
   obj = treeio::drop.tip(obj, tips[!sampled_tips])
-  
+ 
+  # add back root edge
+  obj@phylo$root.edge = stem
   return(obj)
 
 }
