@@ -6,8 +6,8 @@
 #' @param d vector of death probabilities per type
 #' @param rho sampling probability 
 #' @param origin_type one of 0,...,n-1 where n is the number of types
-#' @param Xi_as matrix of asymetric type transition probabilities
-#' @param Xi_s matrix of symetric type transition probabilities
+#' @param Xi_as matrix of asymmetric type transition probabilities
+#' @param Xi_s matrix of symmetric type transition probabilities
 #' @param min_tips minimum number of tips in the phylogeny
 #' @export
 sim_adb_origin_samp <- function(origin_time, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), min_tips = 2) {
@@ -27,7 +27,7 @@ sim_adb_origin_samp <- function(origin_time, a, b, d = 0, rho = 1, origin_type =
     return(NULL)
   }
   
-  phylo_obj <- prune_tree(tree, rho, min_tips) 
+  phylo_obj = prune_tree(tree, rho, min_tips) 
   return(phylo_obj)
 }
 
@@ -39,11 +39,11 @@ sim_adb_origin_samp <- function(origin_time, a, b, d = 0, rho = 1, origin_type =
 #' @param b vector of shape parameters per type
 #' @param d vector of death probabilities per type
 #' @param origin_type one of 0,...,n-1 where n is the number of types
-#' @param Xi_as matrix of asymetric type transition probabilities
-#' @param Xi_s matrix of symetric type transition probabilities
-#' @param min_tips minimum number of tips in the phylogeny
+#' @param Xi_as matrix of asymmetric type transition probabilities
+#' @param Xi_s matrix of symmetric type transition probabilities
+#' @param min_tips minimum number of tips in the tree
 #' @export
-sim_adb_origin_complete <- function(origin_time, a, b, d, origin_type=0, Xi_as=matrix(0), Xi_s=matrix(1), min_tips = 2) {
+sim_adb_origin_complete <- function(origin_time, a, b, d, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), min_tips = 2) {
   
   # initialize
   edges = matrix(nrow = 0, ncol = 2)
@@ -57,8 +57,6 @@ sim_adb_origin_complete <- function(origin_time, a, b, d, origin_type=0, Xi_as=m
     rightchild = integer(0), 
     status = integer(0) # 0 = dead, 1 = alive, 2 = divided
   )
-  #nodes = matrix(nrow = 0, ncol = 7, 
-  #               dimnames = list(NULL, c("id", "height", "type", "parent", "leftchild", "rightchild", "isTip")))
   
   # sample the lifetime of the first particle
   root_edge = rgamma(1, shape = b[origin_type + 1], scale = a[origin_type + 1])

@@ -1,7 +1,7 @@
 #' Prune tree
 #' @param obj treedata object 
 #' @param rho sampling probability (at present only)
-#' @param min_tips min number of tips req'd in final tree
+#' @param min_tips minimum number of tips in the pruned tree
 prune_tree <- function(obj, rho, min_tips){
   # get root edge
   stem = obj@phylo$root.edge
@@ -32,6 +32,9 @@ prune_tree <- function(obj, rho, min_tips){
 
 
 #' Helper function for sampling types of offspring upon division
+#' @param parent_type ID of parent type
+#' @param Xi_as matrix of asymmetric type transition probabilities
+#' @param Xi_s matrix of symmetric type transition probabilities
 sample_types <- function(parent_type, Xi_as, Xi_s) {
   ntypes = ncol(Xi_s)
   

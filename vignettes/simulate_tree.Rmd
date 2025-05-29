@@ -17,11 +17,11 @@ knitr::opts_chunk$set(
 ```{r setup, message=FALSE}
 library(scTreeSim)
 library(ggtree)
-library(dplyr)#fix
+library(dplyr) # fix
 set.seed(12)
 
 ```
-## Single-Type trees
+## Single-type trees
 Two options: by time of origin or by number of (extant) taxa
 ```{r}
 shape <- 100
@@ -32,10 +32,9 @@ t_or <- 6
 ntaxa <- 2^6 
 # simulate:
 dat1 <- sim_adb_origin_complete(t_or, scale, shape, d)
-dat2 <- sim_adb_ntaxa_complete(ntaxa, scale, shape,d)
+dat2 <- sim_adb_ntaxa_complete(ntaxa, scale, shape, d)
 
 dat1
-
 ```
 Object returned is a treedata object (from treeio).
 
@@ -47,7 +46,7 @@ plot(dat1@phylo, show.tip.label=FALSE, root.edge=TRUE)
 plot(dat2@phylo, show.tip.label=FALSE, root.edge=TRUE)
 ```
 
-### Sampled Tree
+### Sampled tree
  this also prunes extinct lineages
 
 ```{r, fig.show="hold", out.width="40%"}
@@ -60,11 +59,10 @@ plot(dat2@phylo,show.tip.label=FALSE, root.edge=TRUE)
 
 ```
 
-## Multi-Type trees
+## Multi-type trees
 
 ```{r, fig.show="hold", out.width="40%"}
-
-# Set up params
+# parameters
 ntype <- 2
 origin_type <- 0
 shape <- c(100,100)
@@ -78,7 +76,7 @@ r <- 0.2
 Xi_as <- matrix(c(0.0, 0.0, r, 0.0), nrow=ntype, ncol=ntype)
 Xi_s <- matrix(c(1-2*r, 0.0, 0.0, 1.0), nrow=ntype, ncol=ntype)
 
-dat1 <- sim_adb_origin_samp(t_or, scale,shape,d,rho,origin_type,Xi_as=Xi_as, Xi_s=Xi_s)
+dat1 <- sim_adb_origin_samp(t_or, scale, shape, d, rho, origin_type, Xi_as, Xi_s)
 
 # another example
 r <- 0.11
@@ -90,7 +88,7 @@ scale <- av_lifetime/shape
 dat2 <- sim_adb_origin_samp(t_or, scale,shape,d,rho,origin_type,Xi_as=Xi_as, Xi_s=Xi_s)
 
 # plot with node/tip types
-ggtree(dat1)+geom_point(aes(color=type), size=2)
-ggtree(dat2)+geom_point(aes(color=type), size=2)
+ggtree(dat1) + geom_rootedge() + geom_point(aes(x=x-branch.length, color=type)) + geom_tippoint(aes(color=type))
+ggtree(dat2) + geom_rootedge() + geom_point(aes(x=x-branch.length, color=type)) + geom_tippoint(aes(color=type))
 
 ```

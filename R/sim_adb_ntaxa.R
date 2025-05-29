@@ -6,10 +6,11 @@
 #' @param d vector of death probabilities per type
 #' @param rho sampling probability 
 #' @param origin_type one of 0,...,n-1 where n is the number of types
-#' @param Xi_as matrix of asymetric type transition probabilities
-#' @param Xi_s matrix of symetric type transition probabilities
+#' @param Xi_as matrix of asymmetric type transition probabilities
+#' @param Xi_s matrix of symmetric type transition probabilities
+#' @param min_tips minimum number of tips in the phylogeny
 #' @export
-sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), min_tips=2) {
+sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), min_tips = 2) {
   # assert that all inputs are correct
   ntypes = length(a)
   assertthat::assert_that(all(c(length(b) == ntypes, length(d) == ntypes, 
@@ -29,7 +30,7 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
     return(NULL)
   }
   
-  phylogeny <- prune_tree(tree, rho, min_tips)
+  phylogeny = prune_tree(tree, rho, min_tips)
 
   return(phylogeny)
 }
@@ -43,8 +44,11 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
 #' @param origin_type one of 0,...,n-1 where n is the number of types
 #' @param Xi_as matrix of asymetric type transition probabilities
 #' @param Xi_s matrix of symetric type transition probabilities
+#' @param min_tips minimum number of tips in the tree
 #' @export
-sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type=0, Xi_as=matrix(0), Xi_s=matrix(0), min_tips=2) {
+#' @importFrom magrittr "%>%"
+#' @importFrom stats rgamma runif
+sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(0), min_tips = 2) {
   
   # initialize
   edges = matrix(nrow = 0, ncol = 2)
