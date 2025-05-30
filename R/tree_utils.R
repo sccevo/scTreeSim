@@ -1,10 +1,11 @@
 #' Prune tree
 #' @param obj treedata object 
 #' @param rho sampling probability (at present only)
+#' @param ntips number of sampled tips
 #' @param min_tips minimum number of tips in the pruned tree
-prune_tree <- function(obj, rho, min_tips){
-  # get root edge and origin
-  stem = obj@phylo$root.edge
+prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2){
+  
+  # store origin
   origin = obj@phylo$origin
   
   # prune dead particles
@@ -18,15 +19,24 @@ prune_tree <- function(obj, rho, min_tips){
     
   # prune unsampled particles
   tips = obj@phylo$tip.label
-  sampled_tips = sample(c(TRUE, FALSE), length(tips), prob = c(rho, 1 - rho), replace = TRUE) # TODO: alternatively, use sample(tips, ntaxa)? 
-  if (sum(sampled_tips) < min_tips) {
+  if (!is.na(rho) & is.na(ntips)) {
+    sampled_tips = tips[sample(c(TRUE, FALSE), length(tips), prob = c(rho, 1 - rho), replace = TRUE)]
+  } else if (is.na(rho) & !is.na(ntips)) {
+    sampled_tips = sample(tips, ntips) 
+  } else {
+    message('Please provide either the sampling probability or the desired number of tips in pruned tree.')
+    return(NULL)
+  }
+
+  if (length(sampled_tips) < min_tips) {
     message('Not enough tips sampled! Try another seed.')
     return(NULL)
   }
-  obj = treeio::drop.tip(obj, tips[!sampled_tips])
+  
+  obj = treeio::drop.tip(obj, setdiff(tips, sampled_tips))
  
-  # add back root edge and origin
-  obj@phylo$root.edge = stem # TODO: re-calculate root.edge (origin - tree height)?
+  # add origin and re-calculate root.edge
+  obj@phylo$root.edge = origin - max(ape::node.depth.edgelength(obj@phylo))
   obj@phylo$origin = origin
   
   return(obj)

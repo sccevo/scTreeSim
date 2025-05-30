@@ -14,20 +14,20 @@ sim_adb_origin_samp <- function(origin_time, a, b, d = 0, rho = 1, origin_type =
   # assert that all inputs are correct
   ntypes = length(a)
   assertthat::assert_that(all(c(length(b) == ntypes, length(d) == ntypes, 
-                    dim(Xi_as) == c(ntypes, ntypes), dim(Xi_s) == c(ntypes, ntypes),
-                    origin_time > 0, origin_type %in% c(0:(ntypes-1)),
-                    d >= 0, d < 1, rho > 0, rho <= 1)),
+                                dim(Xi_as) == c(ntypes, ntypes), dim(Xi_s) == c(ntypes, ntypes),
+                                origin_time > 0, origin_type %in% c(0:(ntypes-1)),
+                                d >= 0, d < 1, rho > 0, rho <= 1)),
               msg = 'The inputs do not have proper dimensions or values. Please check all parameters!')
   assertthat::assert_that(all(sapply(seq(1, ntypes), function(i) {all.equal(sum(2*Xi_as[i, ]) + sum(Xi_s[i, ]), 1.)})),
               msg = 'The transition probabilities do not some to 1. Please check!')
   
   # simulate full tree
-  tree = sim_adb_origin_complete(origin_time, a, b, d, origin_type, Xi_as, Xi_s, min_tips)
+  tree = sim_adb_origin_complete(origin_time = origin_time, a = a, b = b, d = d, origin_type = origin_type, Xi_as = Xi_as, Xi_s = Xi_s, min_tips = min_tips)
   if (is.null(tree)) {
     return(NULL)
   }
   
-  phylo_obj = prune_tree(tree, rho, min_tips) 
+  phylo_obj = prune_tree(obj = tree, rho = rho, min_tips = min_tips) 
   return(phylo_obj)
 }
 
@@ -83,7 +83,7 @@ sim_adb_origin_complete <- function(origin_time, a, b, d, origin_type = 0, Xi_as
         children_types = rep(origin_type, 2)
       } else {
         # multi-type case: sample types
-        children_types = sample_types(event$type, Xi_as, Xi_s)
+        children_types = sample_types(parent_type = event$type, Xi_as = Xi_as, Xi_s = Xi_s)
       }
 
       # sample lifetimes and add new nodes

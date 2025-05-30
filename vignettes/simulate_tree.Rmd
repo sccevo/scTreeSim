@@ -54,8 +54,8 @@ rho <- 0.5 # sampling at present
 dat1 <- sim_adb_origin_samp(t_or, scale, shape, d, rho)
 dat2 <- sim_adb_ntaxa_samp(ntaxa, scale, shape, d, rho)
 
-plot(dat1@phylo,show.tip.label=FALSE, root.edge=TRUE)
-plot(dat2@phylo,show.tip.label=FALSE, root.edge=TRUE) 
+plot(dat1@phylo, show.tip.label=FALSE)
+plot(dat2@phylo, show.tip.label=FALSE) 
 
 ```
 
@@ -88,7 +88,7 @@ scale <- av_lifetime/shape
 dat2 <- sim_adb_origin_samp(t_or, scale,shape,d,rho,origin_type,Xi_as=Xi_as, Xi_s=Xi_s)
 
 # plot with node/tip types
-ggtree(dat1) + geom_rootedge() + geom_point(aes(x=x-branch.length, color=type)) + geom_tippoint(aes(color=type))
-ggtree(dat2) + geom_rootedge() + geom_point(aes(x=x-branch.length, color=type)) + geom_tippoint(aes(color=type))
+ggtree(dat1, aes(color=type)) + geom_tippoint()
+ggtree(dat2, aes(color=type)) + geom_tippoint()
 
 ```

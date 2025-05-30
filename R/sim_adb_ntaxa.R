@@ -14,23 +14,23 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
   # assert that all inputs are correct
   ntypes = length(a)
   assertthat::assert_that(all(c(length(b) == ntypes, length(d) == ntypes, 
-                    dim(Xi_as) == c(ntypes, ntypes), dim(Xi_s) == c(ntypes, ntypes),
-                    ntaxa >= 2, origin_type %in% c(0:ntypes),
-                    d >= 0, d < 1, rho > 0, rho <= 1)),
+                                dim(Xi_as) == c(ntypes, ntypes), dim(Xi_s) == c(ntypes, ntypes),
+                                ntaxa >= min_tips, origin_type %in% c(0:ntypes), 
+                                d >= 0, d < 1, rho > 0, rho <= 1)),
               msg = 'The inputs do not have proper dimensions or values. Please check all parameters!')
-  assertthat::assert_that(all(sapply(seq(1, ntypes), function(i) {all.equal(sum(2*Xi_as[i, ]) + sum(Xi_s[i, ]), 1.)})),
+  assertthat::assert_that(all(sapply(seq(1, ntypes), function(i) {all.equal(sum(2*Xi_as[i, ]) + sum(Xi_s[i, ]), 1)})),
               msg = 'The transition probabilities do not some to 1. Please check!')
   
   # estimate the number of taxa in the full tree
   nfull = ntaxa / rho
   
   # simulate full tree
-  tree = sim_adb_ntaxa_complete(nfull, a, b, d, origin_type, Xi_as, Xi_s)
+  tree = sim_adb_ntaxa_complete(ntaxa = nfull, a = a, b = b, d = d, origin_type = origin_type, Xi_as = Xi_as, Xi_s = Xi_s)
   if (is.null(tree)) {
     return(NULL)
   }
   
-  phylogeny = prune_tree(tree, rho, min_tips)
+  phylogeny = prune_tree(obj = tree, ntips = ntaxa)
 
   return(phylogeny)
 }
@@ -93,7 +93,7 @@ sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0, Xi_as = matr
         children_types = rep(origin_type, 2)
       } else {
         # multi-type case: sample types
-        children_types = sample_types(event$type, Xi_as, Xi_s)
+        children_types = sample_types(parent_type = event$type, Xi_as = Xi_as, Xi_s = Xi_s)
       }
       
       # sample lifetimes and add new nodes
