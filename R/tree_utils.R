@@ -9,10 +9,10 @@ prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2){
   origin = obj@phylo$origin
   
   # prune dead particles
-  dead_nodes = obj %>% tibble::as_tibble() %>% dplyr::filter(status == 0) %>% dplyr::pull(label)
-  obj = treeio::drop.tip(obj, dead_nodes)
-
-  if (is.null(obj@phylo)) {
+  dead_nodes = obj %>% tibble::as_tibble() %>% as.data.frame() %>% dplyr::filter(status == 0) %>% dplyr::pull(label)
+  obj = suppressMessages( treeio::drop.tip(obj, dead_nodes) ) # within the function, there is a tibble command which causes the message "! # Invaild edge matrix for <phylo>. A <tbl_df> is returned." --> suppressed
+  
+  if (is.null(obj)) {
     message('All particles died! Try another seed.')
     return(NULL)
   }
@@ -33,8 +33,8 @@ prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2){
     return(NULL)
   }
   
-  obj = treeio::drop.tip(obj, setdiff(tips, sampled_tips))
- 
+  obj = suppressMessages( treeio::drop.tip(obj, setdiff(tips, sampled_tips)) )
+
   # add origin and re-calculate root.edge
   obj@phylo$root.edge = origin - max(ape::node.depth.edgelength(obj@phylo))
   obj@phylo$origin = origin
