@@ -1,4 +1,3 @@
-
 #' Simulator of a phylogeny from an Age-Dependent Branching Process for a fixed time interval (since origin)
 #' @param origin_time time of birth of the initial particle
 #' @param a vector of scale parameters per type
@@ -121,16 +120,21 @@ sim_adb_origin_complete <- function(origin_time, a, b, d, origin_type = 0, Xi_as
     }
   }
   
-  # check number of tips
+  # calculate number of cells per status
   Nnode = sum(nodes$status == 2)
-  Ntip = sum(nodes$status %in% c(0,1))
+  n_dead = sum(nodes$status == 0)
+  n_alive = sum(nodes$status == 1)
+  Ntip = n_dead + n_alive
+
+  # check number of tips
   if (Ntip < min_tips) {
     message("The simulated tree has too few tips. Try another seed.")
     return(NULL)
   }
   
   # assign labels
-  nodes[which(nodes$status %in% c(0,1)), 'label'] = c(1:Ntip) 
+  nodes[which(nodes$status == 1), 'label'] = c(1:n_alive)
+  nodes[which(nodes$status == 0), 'label'] = c((n_alive + 1):Ntip)  
   nodes[which(nodes$status == 2), 'label'] = c((Ntip + 1):(Ntip + Nnode)) 
   
   # use labels in edge matrix

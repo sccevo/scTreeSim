@@ -16,5 +16,6 @@ Imports:
     magrittr,
     dplyr,
     tibble,
-    treeio
+    treeio,
+    TreeSim
 VignetteBuilder: knitr

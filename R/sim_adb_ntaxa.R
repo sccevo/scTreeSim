@@ -1,4 +1,3 @@
-
 #' Simulator of a phylogeny from an Age-Dependent Branching Process for a fixed number of sampled particles
 #' @param ntaxa number of sampled particles (at least 2)
 #' @param a vector of scale parameters per type
@@ -133,12 +132,15 @@ sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0, Xi_as = matr
   edge_lengths = sapply(c(1:nrow(edges)), function(i) {
     nodes[nodes$id == edges[i, 2], 'height'] - nodes[nodes$id == edges[i, 1], 'height'] })
   
-  # check number of tips
-  Nnode = sum(nodes$status == 2)
-  Ntip = sum(nodes$status %in% c(0,1))
+  # calculate number of cells per status
+  Nnode = sum(nodes$status == 2) # number of cell divisions = number of internal nodes 
+  n_dead = sum(nodes$status == 0)
+  n_alive = sum(nodes$status == 1)
+  Ntip = n_dead + n_alive
   
   # assign labels
-  nodes[which(nodes$status %in% c(0,1)), 'label'] = c(1:Ntip) 
+  nodes[which(nodes$status == 1), 'label'] = c(1:n_alive)
+  nodes[which(nodes$status == 0), 'label'] = c((n_alive + 1):Ntip)  
   nodes[which(nodes$status == 2), 'label'] = c((Ntip + 1):(Ntip + Nnode)) 
   
   # use labels in edge matrix
