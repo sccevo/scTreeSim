@@ -9,7 +9,7 @@
 #' @param Xi_s matrix of symmetric type transition probabilities
 #' @param min_tips minimum number of tips in the phylogeny
 #' @export
-sim_adb_origin_samp <- function(origin_time, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), min_tips = 2) {
+sim_adb_origin_samp <- function(origin_time, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), min_tips = 2, collapse = TRUE) {
   # assert that all inputs are correct
   ntypes = length(a)
   assertthat::assert_that(all(c(length(b) == ntypes, length(d) == ntypes, 
@@ -17,7 +17,7 @@ sim_adb_origin_samp <- function(origin_time, a, b, d = 0, rho = 1, origin_type =
                                 origin_time > 0, origin_type %in% c(0:(ntypes-1)),
                                 d >= 0, d < 1, rho > 0, rho <= 1)),
               msg = 'The inputs do not have proper dimensions or values. Please check all parameters!')
-  assertthat::assert_that(all(sapply(seq(1, ntypes), function(i) {all.equal(sum(2*Xi_as[i, ]) + sum(Xi_s[i, ]), 1.)})),
+  assertthat::assert_that(all(sapply(seq(1, ntypes), function(i) {all.equal(sum(Xi_as[i, ]) + sum(Xi_s[i, ]), 1.)})),
               msg = 'The transition probabilities do not some to 1. Please check!')
   
   # simulate full tree
@@ -26,7 +26,7 @@ sim_adb_origin_samp <- function(origin_time, a, b, d = 0, rho = 1, origin_type =
     return(NULL)
   }
   
-  phylo_obj = prune_tree(obj = tree, rho = rho, min_tips = min_tips) 
+  phylo_obj = prune_tree(obj = tree, rho = rho, min_tips = min_tips, collapse = collapse) 
   return(phylo_obj)
 }
 

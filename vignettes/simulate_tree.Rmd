@@ -74,18 +74,18 @@ d <- c(0.01, 0.7)
 # transition matrices
 r <- 0.2
 Xi_as <- matrix(c(0.0, 0.0, r, 0.0), nrow=ntype, ncol=ntype)
-Xi_s <- matrix(c(1-2*r, 0.0, 0.0, 1.0), nrow=ntype, ncol=ntype)
+Xi_s <- matrix(c(1-r, 0.0, 0.0, 1.0), nrow=ntype, ncol=ntype)
 
-dat1 <- sim_adb_origin_samp(t_or, scale, shape, d, rho, origin_type, Xi_as, Xi_s)
+dat1 <- sim_adb_origin_samp(t_or, scale, shape, d, rho, origin_type, Xi_as, Xi_s, collapse=F)
 
 # another example
 r <- 0.11
 Xi_as <- matrix(c(0.0, 0.0, r, 0.0), nrow=ntype, ncol=ntype)
-Xi_s <- matrix(c(1-2*r, 0.0, 0.0, 1.0), nrow=ntype, ncol=ntype)
+Xi_s <- matrix(c(1-r, 0.0, 0.0, 1.0), nrow=ntype, ncol=ntype)
 d <- c(0.1, 0.1)
 shape <- c(100, 1)
 scale <- av_lifetime/shape
-dat2 <- sim_adb_origin_samp(t_or, scale,shape,d,rho,origin_type,Xi_as=Xi_as, Xi_s=Xi_s)
+dat2 <- sim_adb_origin_samp(t_or, scale,shape,d,rho,origin_type,Xi_as=Xi_as, Xi_s=Xi_s, collapse=F)
 
 # plot with node/tip types
 ggtree(dat1, aes(color=type)) + geom_tippoint()

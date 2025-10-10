@@ -9,7 +9,7 @@
 #' @param Xi_s matrix of symmetric type transition probabilities
 #' @param min_tips minimum number of tips in the phylogeny
 #' @export
-sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), min_tips = 2) {
+sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), min_tips = 2, collapse = TRUE) {
   # assert that all inputs are correct
   ntypes = length(a)
   assertthat::assert_that(all(c(length(b) == ntypes, length(d) == ntypes, 
@@ -17,7 +17,7 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
                                 ntaxa >= min_tips, origin_type %in% c(0:ntypes), 
                                 d >= 0, d < 1, rho > 0, rho <= 1)),
               msg = 'The inputs do not have proper dimensions or values. Please check all parameters!')
-  assertthat::assert_that(all(sapply(seq(1, ntypes), function(i) {all.equal(sum(2*Xi_as[i, ]) + sum(Xi_s[i, ]), 1)})),
+  assertthat::assert_that(all(sapply(seq(1, ntypes), function(i) {all.equal(sum(Xi_as[i, ]) + sum(Xi_s[i, ]), 1)})),
               msg = 'The transition probabilities do not some to 1. Please check!')
   
   # estimate the number of taxa in the full tree
@@ -29,7 +29,7 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
     return(NULL)
   }
   
-  phylogeny = prune_tree(obj = tree, ntips = ntaxa)
+  phylogeny = prune_tree(obj = tree, ntips = ntaxa, collapse = collapse)
 
   return(phylogeny)
 }

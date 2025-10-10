@@ -3,14 +3,15 @@
 #' @param rho sampling probability (at present only)
 #' @param ntips number of sampled tips
 #' @param min_tips minimum number of tips in the pruned tree
-prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2){
+#' @param collapse if TRUE, stores the standard structure (node-typed tree), otherwise keeps nodes with one descendant (branch-typed tree)
+prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2, collapse = TRUE){
   
   # store origin
   origin = obj@phylo$origin
   
   # prune dead particles
-  dead_nodes = obj %>% tibble::as_tibble() %>% as.data.frame() %>% dplyr::filter(status == 0) %>% dplyr::pull(label)
-  obj = suppressMessages( treeio::drop.tip(obj, dead_nodes) ) # within the function, there is a tibble command which causes the message "! # Invaild edge matrix for <phylo>. A <tbl_df> is returned." --> suppressed
+  dead_nodes = obj %>% tibble::as_tibble() %>% as.data.frame() %>% dplyr::filter(status == 0) 
+  obj = suppressMessages( treeio::drop.tip(obj, dead_nodes$label, collapse.singles = collapse) ) # within the function, there is a tibble command which causes the message "! # Invalid edge matrix for <phylo>. A <tbl_df> is returned." --> suppressed
   
   if (is.null(obj)) {
     message('All particles died! Try another seed.')
@@ -33,7 +34,7 @@ prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2){
     return(NULL)
   }
   
-  obj = suppressMessages( treeio::drop.tip(obj, setdiff(tips, sampled_tips)) )
+  obj = suppressMessages( treeio::drop.tip(obj, setdiff(tips, sampled_tips), collapse.singles = collapse) )
 
   # add origin and re-calculate root.edge
   obj@phylo$root.edge = origin - max(ape::node.depth.edgelength(obj@phylo))
