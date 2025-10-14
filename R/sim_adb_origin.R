@@ -127,14 +127,14 @@ sim_adb_origin_complete <- function(origin_time, a, b, d, origin_type = 0, Xi_as
   Ntip = n_dead + n_alive
 
   # check number of tips
-  if (Ntip < min_tips) {
+  if (n_alive < min_tips) {
     message("The simulated tree has too few tips. Try another seed.")
     return(NULL)
   }
   
   # assign labels
   nodes[which(nodes$status == 1), 'label'] = c(1:n_alive)
-  nodes[which(nodes$status == 0), 'label'] = c((n_alive + 1):Ntip)  
+  if (n_dead > 0) { nodes[which(nodes$status == 0), 'label'] = c((n_alive + 1):Ntip) }  
   nodes[which(nodes$status == 2), 'label'] = c((Ntip + 1):(Ntip + Nnode)) 
   
   # use labels in edge matrix

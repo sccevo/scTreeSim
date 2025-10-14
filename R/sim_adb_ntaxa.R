@@ -1,5 +1,5 @@
 #' Simulator of a phylogeny from an Age-Dependent Branching Process for a fixed number of sampled particles
-#' @param ntaxa number of sampled particles (at least 2)
+#' @param ntaxa number of sampled particles - tips in the phylogeny (at least 2)
 #' @param a vector of scale parameters per type
 #' @param b vector of shape parameters per type
 #' @param d vector of death probabilities per type
@@ -7,14 +7,13 @@
 #' @param origin_type one of 0,...,n-1 where n is the number of types
 #' @param Xi_as matrix of asymmetric type transition probabilities
 #' @param Xi_s matrix of symmetric type transition probabilities
-#' @param min_tips minimum number of tips in the phylogeny
 #' @export
-sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), min_tips = 2, collapse = TRUE) {
+sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), collapse = TRUE) {
   # assert that all inputs are correct
   ntypes = length(a)
   assertthat::assert_that(all(c(length(b) == ntypes, length(d) == ntypes, 
                                 dim(Xi_as) == c(ntypes, ntypes), dim(Xi_s) == c(ntypes, ntypes),
-                                ntaxa >= min_tips, origin_type %in% c(0:ntypes), 
+                                origin_type %in% c(0:ntypes), 
                                 d >= 0, d < 1, rho > 0, rho <= 1)),
               msg = 'The inputs do not have proper dimensions or values. Please check all parameters!')
   assertthat::assert_that(all(sapply(seq(1, ntypes), function(i) {all.equal(sum(Xi_as[i, ]) + sum(Xi_s[i, ]), 1)})),
@@ -43,11 +42,10 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
 #' @param origin_type one of 0,...,n-1 where n is the number of types
 #' @param Xi_as matrix of asymetric type transition probabilities
 #' @param Xi_s matrix of symetric type transition probabilities
-#' @param min_tips minimum number of tips in the tree
 #' @export
 #' @importFrom magrittr "%>%"
 #' @importFrom stats rgamma runif
-sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(0), min_tips = 2) {
+sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(0)) {
   
   # initialize
   edges = matrix(nrow = 0, ncol = 2)
@@ -140,7 +138,7 @@ sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0, Xi_as = matr
   
   # assign labels
   nodes[which(nodes$status == 1), 'label'] = c(1:n_alive)
-  nodes[which(nodes$status == 0), 'label'] = c((n_alive + 1):Ntip)  
+  if (n_dead > 0) { nodes[which(nodes$status == 0), 'label'] = c((n_alive + 1):Ntip) }  
   nodes[which(nodes$status == 2), 'label'] = c((Ntip + 1):(Ntip + Nnode)) 
   
   # use labels in edge matrix
