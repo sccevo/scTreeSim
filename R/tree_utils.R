@@ -60,7 +60,7 @@ sample_types <- function(parent_type, Xi_as, Xi_s) {
       return(c(i, i))
     }
     # asymmetric case
-    cum_prob = cum_prob + 2*Xi_as[parent_type + 1, i + 1];
+    cum_prob = cum_prob + Xi_as[parent_type + 1, i + 1];
     if (runif(1) < cum_prob) {
       if (runif(1) < 0.5) {
         return(c(parent_type, i))
