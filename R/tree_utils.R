@@ -52,16 +52,18 @@ prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2, collapse = TRUE)
 sample_types <- function(parent_type, Xi_as, Xi_s) {
   ntypes = ncol(Xi_s)
   
+  # draw random number
+  r = runif(1)
   cum_prob = 0
   for (i in seq(0, ntypes - 1)) {
     # symmetric case
     cum_prob = cum_prob + Xi_s[parent_type + 1, i + 1];
-    if (runif(1) < cum_prob) {
+    if (r < cum_prob) {
       return(c(i, i))
     }
     # asymmetric case
     cum_prob = cum_prob + Xi_as[parent_type + 1, i + 1];
-    if (runif(1) < cum_prob) {
+    if (r < cum_prob) {
       if (runif(1) < 0.5) {
         return(c(parent_type, i))
       } else {
