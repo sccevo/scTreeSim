@@ -8,7 +8,7 @@
 #' @param Xi_as matrix of asymmetric type transition probabilities
 #' @param Xi_s matrix of symmetric type transition probabilities
 #' @export
-sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), collapse = TRUE) {
+sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), collapse = TRUE, tumor = FALSE) {
   # assert that all inputs are correct
   ntypes = length(a)
   assertthat::assert_that(all(c(length(b) == ntypes, length(d) == ntypes, 
@@ -23,7 +23,7 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
   nfull = ntaxa / rho
   
   # simulate full tree
-  tree = sim_adb_ntaxa_complete(ntaxa = nfull, a = a, b = b, d = d, origin_type = origin_type, Xi_as = Xi_as, Xi_s = Xi_s)
+  tree = sim_adb_ntaxa_complete(ntaxa = nfull, a = a, b = b, d = d, origin_type = origin_type, Xi_as = Xi_as, Xi_s = Xi_s, tumor = tumor)
   if (is.null(tree)) {
     return(NULL)
   }
@@ -45,7 +45,7 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
 #' @export
 #' @importFrom magrittr "%>%"
 #' @importFrom stats rgamma runif
-sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(0)) {
+sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(0), tumor = FALSE) {
   
   # initialize
   edges = matrix(nrow = 0, ncol = 2)
@@ -113,6 +113,12 @@ sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0, Xi_as = matr
       # add child relationships and append the current edges and edge lengths
       nodes[event$id, c("leftchild", "rightchild")] = c(left_id, right_id)
       edges = rbind(edges, c(event$id, left_id), c(event$id, right_id))
+      
+      if(tumor & (origin_type != left_type | origin_type != right_type) ){ # the tumor has started!
+        Xi_as[1,2] = 0
+        Xi_s[1,1] = 1
+        
+      } 
     }
   }
   
