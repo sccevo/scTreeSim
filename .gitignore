@@ -29,3 +29,6 @@ vignettes/*.docx
 man/*.Rd
 /doc/
 /Meta/
+
+# benchmarking files
+benchmarking_reports/
