@@ -33,6 +33,75 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
   return(phylogeny)
 }
 
+#' Simulator of the complete Age-Dependent Branching Process (up to a fixed number of living particles)
+#' @param ntaxa number of sampled particles (at least 2)
+#' @param a vector of scale parameters per type
+#' @param b vector of shape parameters per type
+#' @param d vector of death probabilities per type
+#' @param origin_type one of 0,...,n-1 where n is the number of types
+#' @param Xi_as matrix of asymetric type transition probabilities
+#' @param Xi_s matrix of symetric type transition probabilities
+#' @export
+#' @useDynLib scTreeSim, .registration = TRUE
+#' @importFrom Rcpp sourceCpp
+#' @importFrom magrittr "%>%"
+#' @importFrom stats rgamma runif
+sim_adb_ntaxa_complete_fast <- function(ntaxa, a, b, d, origin_type = 0,
+                                        Xi_as = matrix(0), Xi_s = matrix(0)) {
+  raw <- sim_adb_loop_cpp(ntaxa, a, b, d, origin_type)
+  
+  nodes <- as.data.frame(raw[c("id","height","type","parent","leftchild","rightchild","status")])
+  root_edge <- raw$root_edge
+  
+  if (sum(nodes$status == 1) < ntaxa) {
+    message("Too many particles died!")
+    return(NULL)
+  }
+  
+  # truncate
+  stopping_time <- min(nodes$height[nodes$status == 1])
+  nodes$height[nodes$status == 1] <- stopping_time
+  
+  # build edge matrix from parent column (skip root which has NA parent)
+  child_rows <- which(!is.na(nodes$parent))
+  edges <- cbind(nodes$parent[child_rows], nodes$id[child_rows])
+  
+  # edge lengths
+  parent_heights <- nodes$height[match(edges[,1], nodes$id)]
+  child_heights  <- nodes$height[match(edges[,2], nodes$id)]
+  edge_lengths   <- child_heights - parent_heights
+  
+  # labels
+  n_alive <- sum(nodes$status == 1)
+  n_dead  <- sum(nodes$status == 0)
+  Ntip    <- n_alive + n_dead
+  Nnode   <- sum(nodes$status == 2)
+  nodes$label <- NA_integer_
+  nodes$label[nodes$status == 1] <- seq_len(n_alive)
+  if (n_dead > 0) nodes$label[nodes$status == 0] <- (n_alive+1):Ntip
+  nodes$label[nodes$status == 2] <- (Ntip+1):(Ntip+Nnode)
+  
+  edges_recoded <- matrix(nodes$label[match(as.vector(edges), nodes$id)],
+                          nrow = nrow(edges), ncol = 2)
+  
+  phylo_tree <- list(edge = edges_recoded, edge.length = edge_lengths,
+                     Nnode = Nnode,
+                     tip.label = as.character(nodes$label[nodes$status %in% c(0,1)]))
+  class(phylo_tree) <- "phylo"
+  
+  tree <- treeio::as.treedata(phylo_tree)
+  tree@phylo$root.edge <- root_edge
+  tree@phylo$origin    <- stopping_time
+  
+  types <- dplyr::tibble(
+    node   = nodes$label,
+    status = nodes$status,
+    type   = as.factor(nodes$type)
+  ) |> dplyr::arrange(node)
+  tree@data <- types
+  
+  tree
+}
 
 #' Simulator of the complete Age-Dependent Branching Process (up to a fixed number of living particles)
 #' @param ntaxa number of sampled particles (at least 2)
