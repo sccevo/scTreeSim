@@ -91,3 +91,59 @@ dat2 <- sim_adb_origin_samp(t_or, scale, shape, d, rho, origin_type, Xi_as=Xi_as
 ggtree(dat1, aes(color=type)) + geom_rootedge(color="#F8766D") + geom_tippoint()
 ggtree(dat2, aes(color=type)) + geom_rootedge(color="#F8766D") + geom_tippoint()
 ```
+
+```{r}
+library(microbenchmark)
+
+shape <- 100
+av_lifetime <- 1
+d <- 0.08
+scale <- av_lifetime/shape
+t_or <- 6
+ntaxa <- 50
+
+# benchmark the simulation
+microbenchmark(sim_adb_ntaxa_complete(ntaxa, scale, shape, d), times=10)
+```
+```{r}
+library(profvis)
+
+shape <- 100
+av_lifetime <- 1
+d <- 0.08
+scale <- av_lifetime/shape
+# t_or <- 6
+ntaxa <- 5000
+
+p <- profvis({data <- sim_adb_ntaxa_complete(ntaxa, scale, shape, d)})
+p
+```
+
+```{r}
+library(microbenchmark)
+
+shape <- 100
+av_lifetime <- 1
+d <- 0.03
+scale <- av_lifetime / shape
+ntaxa <- 10000
+
+microbenchmark(
+  R_original = sim_adb_ntaxa_complete(ntaxa, scale, shape, d),
+  Rcpp_fast  = sim_adb_ntaxa_complete_fast(ntaxa, scale, shape, d),
+  times = 10
+)
+```
+
+```{r}
+# generating trees to validate the structure and ensure algorithm still works the same
+data_cpp <- shape <- 100
+av_lifetime <- 1
+d <- 0.08
+scale <- av_lifetime / shape
+ntaxa <- 65
+
+data_cpp <- sim_adb_ntaxa_complete_fast(ntaxa, scale, shape, d)
+  
+plot(data_cpp@phylo, show.tip.label=FALSE, root.edge=FALSE)
+```
