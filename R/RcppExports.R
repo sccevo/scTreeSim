@@ -5,7 +5,7 @@ sim_adb_loop_cpp <- function(ntaxa, a, b, d, origin_type = 0L) {
     .Call(`_scTreeSim_sim_adb_loop_cpp`, ntaxa, a, b, d, origin_type)
 }
 
-sim_adb_origin_loop_cpp <- function(origin_time, a, b, d, origin_type = 0L) {
-    .Call(`_scTreeSim_sim_adb_origin_loop_cpp`, origin_time, a, b, d, origin_type)
+sim_adb_origin_loop_cpp <- function(origin_time, a, b, d, rho, Xi_a, Xi_s, origin_type = 0L, m = 500L, maxit = 100L, tol = 1e-6) {
+    .Call(`_scTreeSim_sim_adb_origin_loop_cpp`, origin_time, a, b, d, rho, Xi_a, Xi_s, origin_type, m, maxit, tol)
 }
 

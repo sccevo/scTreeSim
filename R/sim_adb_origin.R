@@ -167,48 +167,61 @@ sim_adb_origin_complete <- function(origin_time, a, b, d, origin_type = 0, Xi_as
 #' @param a vector of scale parameters per type
 #' @param b vector of shape parameters per type
 #' @param d vector of death probabilities per type
+#' @param rho sampling probability
 #' @param origin_type one of 0,...,n-1 where n is the number of types
 #' @param Xi_as matrix of asymmetric type transition probabilities
 #' @param Xi_s matrix of symmetric type transition probabilities
 #' @param min_tips minimum number of tips in the tree
+#' @param m number of grid points for P0 approximation
+#' @param maxit maximum iterations for P0 solver
+#' @param tol convergence tolerance for P0 solver
 #' @export
-sim_adb_origin_complete_fast <- function(origin_time, a, b, d, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), min_tips = 2) {
+sim_adb_origin_complete_fast <- function(origin_time, a, b, d, rho = 1,
+                                         origin_type = 0,
+                                         Xi_as = matrix(0), Xi_s = matrix(1),
+                                         min_tips = 2,
+                                         m = 500, maxit = 100, tol = 1e-6) {
   
-  raw <- sim_adb_origin_loop_cpp(origin_time, a, b, d, origin_type)
+  raw <- sim_adb_origin_loop_cpp(origin_time, a, b, d, rho, Xi_as, Xi_s,
+                                 origin_type, m, maxit, tol)
   
   nodes <- as.data.frame(raw[c("id","height","type","parent","leftchild","rightchild","status")])
   root_edge   <- raw$root_edge
   edges       <- cbind(raw$edges_from, raw$edges_to)
   edge_lengths <- raw$edge_lengths
   
+  # calculate number of cells per status
   n_alive <- sum(nodes$status == 1)
   n_dead  <- sum(nodes$status == 0)
   Ntip    <- n_alive + n_dead
   Nnode   <- sum(nodes$status == 2)
   
+  # check number of tips
   if (n_alive < min_tips) {
     message("The simulated tree has too few tips. Try another seed.")
     return(NULL)
   }
   
-  # labels
+  # assign labels
   nodes$label <- NA_integer_
   nodes$label[nodes$status == 1] <- seq_len(n_alive)
   if (n_dead > 0) nodes$label[nodes$status == 0] <- (n_alive+1):Ntip
   nodes$label[nodes$status == 2] <- (Ntip+1):(Ntip+Nnode)
   
+  # use labels in edge matrix
   edges_recoded <- matrix(nodes$label[match(as.vector(edges), nodes$id)],
                           nrow = nrow(edges), ncol = 2)
   
+  # creare phylogenetic tree
   phylo_tree <- list(edge = edges_recoded, edge.length = edge_lengths,
                      Nnode = Nnode,
                      tip.label = as.character(nodes$label[nodes$status %in% c(0,1)]))
   class(phylo_tree) <- "phylo"
   
+  # create treedata object
   tree <- treeio::as.treedata(phylo_tree)
   tree@phylo$root.edge <- root_edge
   tree@phylo$origin    <- origin_time
-  
   types <- dplyr::tibble(
     node   = nodes$label,
     status = nodes$status,

@@ -17,7 +17,8 @@ Imports:
     tibble,
     treeio,
     TreeSim,
-    Rcpp
+    Rcpp,
+    RcppArmadillo
 VignetteBuilder: knitr
-LinkingTo: Rcpp
+LinkingTo: Rcpp, RcppArmadillo
 Config/roxygen2/version: 8.0.0
