@@ -21,6 +21,7 @@ arma::vec convolve_fft(
 }
 
 // Extinction prob
+// [[Rcpp::export]]
 arma::mat get_X(
     double rho, 
     NumericVector a, 
@@ -81,6 +82,47 @@ arma::mat get_X(
   return X0;
 }
 
+// helper: sample child types from transition matrices given parent type
+// mirrors sample_types() in R
+std::pair<int,int> sample_child_types(int parent_type,
+                                      const NumericMatrix& Xi_as,
+                                      const NumericMatrix& Xi_s,
+                                      int ntype) {
+  // build probability vector over all (left_type, right_type) combinations
+  // asymmetric: parent->left is type j, parent->right is type k  (j != k possible)
+  // symmetric:  both children same type k
+  // Xi_as(i,j): prob parent type i -> asymmetric split with one child type j
+  // Xi_s(i,j):  prob parent type i -> symmetric split both children type j
+  
+  std::vector<double> probs;
+  std::vector<std::pair<int,int>> combos;
+  
+  for (int j = 0; j < ntype; j++) {
+    for (int k = 0; k < ntype; k++) {
+      // asymmetric: one child type j, other type k (ordered)
+      if (Xi_as(parent_type, j) > 0 && j != k) {
+        probs.push_back(Xi_as(parent_type, j));
+        combos.push_back({j, k});
+      }
+      // symmetric: both children type k
+      if (Xi_s(parent_type, k) > 0 && j == k) {
+        probs.push_back(Xi_s(parent_type, k));
+        combos.push_back({k, k});
+      }
+    }
+  }
+  
+  // normalise and sample
+  double total = 0; for (double p : probs) total += p;
+  double u = R::runif(0, 1) * total;
+  double cum = 0;
+  for (int i = 0; i < (int)probs.size(); i++) {
+    cum += probs[i];
+    if (u <= cum) return combos[i];
+  }
+  return combos.back();
+}
+
 // [[Rcpp::export]]
 List sim_adb_origin_loop_cpp(double origin_time,
                              NumericVector a,
@@ -94,6 +136,9 @@ List sim_adb_origin_loop_cpp(double origin_time,
                              int maxit = 100,
                              double tol = 1e-6) {
   
+  //multi-types
+  int ntype = a.size();
+  
   // Pre-compute P0 over [0, origin_time]
   double dx = origin_time / (m - 1.0);
   arma::vec t_seq = arma::linspace(0.0, origin_time, m);
@@ -103,6 +148,7 @@ List sim_adb_origin_loop_cpp(double origin_time,
   // Helper: look up P0 at a given absolute time for a given type
   // t here is absolute time from origin (i.e. height in the tree)
   auto lookup_p0 = [&](double t, int type) -> double {
+    if (rho >= 1.0) return 0.0;
     // t_seq runs 0..origin_time; find nearest index
     int idx = (int)std::round(t / dx);
     idx = std::max(0, std::min(idx, m - 1));
@@ -135,72 +181,94 @@ List sim_adb_origin_loop_cpp(double origin_time,
   while (!event_stack.empty()) {
     int idx = event_stack.back();
     event_stack.pop_back();
-    
-    if (R::runif(0, 1) < d[v_type[idx]]) {
+  
+    if (R::runif(0,1) < d[v_type[idx]]) {
       v_status[idx] = 0;
-    } else {
-      v_status[idx] = 2;
+      continue;
+    }
+    
+    v_status[idx] = 2;
+    
+    if (n_nodes + 2 > max_nodes) {
+      max_nodes *= 2;
+      v_id.resize(max_nodes);    v_type.resize(max_nodes);
+      v_parent.resize(max_nodes, NA_INTEGER);
+      v_left.resize(max_nodes, NA_INTEGER);
+      v_right.resize(max_nodes, NA_INTEGER);
+      v_status.resize(max_nodes); v_height.resize(max_nodes);
+    }
+    
+    int left_id  = event_counter + 1;
+    int right_id = event_counter + 2;
+    event_counter += 2;
+    
+    // multi-type support
+    std::pair<int,int> child_types = sample_child_types(v_type[idx], Xi_a, Xi_s, ntype);
+    int lt = child_types.first;
+    int rt = child_types.second;
+    
+    // --- left child ---
+    double left_lifetime = R::rgamma(b[lt], a[lt]);
+    double left_height   = v_height[idx] - left_lifetime;
+    bool   left_censored = left_height < 0;
+    if (left_censored) { left_lifetime = v_height[idx]; left_height = 0.0; }
+    
+    int li = n_nodes++;
+    v_id[li]=left_id; v_type[li]=lt; v_height[li]=left_height;
+    v_parent[li]=v_id[idx]; v_left[li]=NA_INTEGER; v_right[li]=NA_INTEGER; v_status[li]=1;
+    v_edges_from.push_back(v_id[idx]); v_edges_to.push_back(left_id);
+    v_edge_lengths.push_back(left_lifetime);
+    
+    // if not censored, flip coin weighted by P0 to decide if lineage goes extinct
+    if (!left_censored) {
       
-      if (n_nodes + 2 > max_nodes) {
-        max_nodes *= 2;
-        v_id.resize(max_nodes);    v_type.resize(max_nodes);
-        v_parent.resize(max_nodes, NA_INTEGER);
-        v_left.resize(max_nodes, NA_INTEGER);
-        v_right.resize(max_nodes, NA_INTEGER);
-        v_status.resize(max_nodes); v_height.resize(max_nodes);
-      }
-      
-      int left_id  = event_counter + 1;
-      int right_id = event_counter + 2;
-      event_counter += 2;
-      int lt = origin_type, rt = origin_type; // single-type
-      
-      // --- left child ---
-      double left_lifetime = R::rgamma(b[lt], a[lt]);
-      double left_height   = v_height[idx] - left_lifetime;
-      bool   left_censored = left_height < 0;
-      if (left_censored) { left_lifetime = v_height[idx]; left_height = 0.0; }
-      
-      int li = n_nodes++;
-      v_id[li]=left_id; v_type[li]=lt; v_height[li]=left_height;
-      v_parent[li]=v_id[idx]; v_left[li]=NA_INTEGER; v_right[li]=NA_INTEGER; v_status[li]=1;
-      v_edges_from.push_back(v_id[idx]); v_edges_to.push_back(left_id);
-      v_edge_lengths.push_back(left_lifetime);
-      
-      // if not censored, flip coin weighted by P0 to decide if lineage goes extinct
-      if (!left_censored) {
-        double p0_left = lookup_p0(left_height, lt);
-        if (R::runif(0, 1) < p0_left) {
-          v_status[li] = 0; // mark as extinct, don't enqueue
+      if (rho < 1.0) {
+        double age_left = origin_time - left_height;
+        double p0_left = lookup_p0(age_left, lt);
+        
+        if (R::runif(0,1) < p0_left) {
+          v_status[li] = 0;
         } else {
           event_stack.push_back(li);
         }
+        
+      } else {
+        event_stack.push_back(li);
       }
+    }
+    
+    // --- right child ---
+    double right_lifetime = R::rgamma(b[rt], a[rt]);
+    double right_height   = v_height[idx] - right_lifetime;
+    bool   right_censored = right_height < 0;
+    if (right_censored) { right_lifetime = v_height[idx]; right_height = 0.0; }
+    
+    int ri = n_nodes++;
+    v_id[ri]=right_id; v_type[ri]=rt; v_height[ri]=right_height;
+    v_parent[ri]=v_id[idx]; v_left[ri]=NA_INTEGER; v_right[ri]=NA_INTEGER; v_status[ri]=1;
+    v_edges_from.push_back(v_id[idx]); v_edges_to.push_back(right_id);
+    v_edge_lengths.push_back(right_lifetime);
+    
+    if (!right_censored) {
       
-      // --- right child ---
-      double right_lifetime = R::rgamma(b[rt], a[rt]);
-      double right_height   = v_height[idx] - right_lifetime;
-      bool   right_censored = right_height < 0;
-      if (right_censored) { right_lifetime = v_height[idx]; right_height = 0.0; }
-      
-      int ri = n_nodes++;
-      v_id[ri]=right_id; v_type[ri]=rt; v_height[ri]=right_height;
-      v_parent[ri]=v_id[idx]; v_left[ri]=NA_INTEGER; v_right[ri]=NA_INTEGER; v_status[ri]=1;
-      v_edges_from.push_back(v_id[idx]); v_edges_to.push_back(right_id);
-      v_edge_lengths.push_back(right_lifetime);
-      
-      if (!right_censored) {
-        double p0_right = lookup_p0(right_height, rt);
-        if (R::runif(0, 1) < p0_right) {
+      if (rho < 1.0) {
+        
+        double age_right = origin_time - right_height;
+        double p0_right = lookup_p0(age_right, rt);
+        
+        if (R::runif(0,1) < p0_right) {
           v_status[ri] = 0;
         } else {
           event_stack.push_back(ri);
         }
+        
+      } else {
+        event_stack.push_back(ri);
       }
-      
-      v_left[idx]  = left_id;
-      v_right[idx] = right_id;
     }
+    
+    v_left[idx]  = left_id;
+    v_right[idx] = right_id;
   }
   
   int N = n_nodes;
@@ -218,3 +286,4 @@ List sim_adb_origin_loop_cpp(double origin_time,
     _["root_edge"]   = root_lifetime
   );
 }
+

@@ -26,6 +26,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// get_X
+arma::mat get_X(double rho, NumericVector a, NumericVector b, NumericVector d, NumericMatrix Xi_a, NumericMatrix Xi_s, arma::vec t, double dx, int maxit, double tol);
+RcppExport SEXP _scTreeSim_get_X(SEXP rhoSEXP, SEXP aSEXP, SEXP bSEXP, SEXP dSEXP, SEXP Xi_aSEXP, SEXP Xi_sSEXP, SEXP tSEXP, SEXP dxSEXP, SEXP maxitSEXP, SEXP tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< double >::type rho(rhoSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type a(aSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type b(bSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type d(dSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type Xi_a(Xi_aSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type Xi_s(Xi_sSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t(tSEXP);
+    Rcpp::traits::input_parameter< double >::type dx(dxSEXP);
+    Rcpp::traits::input_parameter< int >::type maxit(maxitSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(get_X(rho, a, b, d, Xi_a, Xi_s, t, dx, maxit, tol));
+    return rcpp_result_gen;
+END_RCPP
+}
 // sim_adb_origin_loop_cpp
 List sim_adb_origin_loop_cpp(double origin_time, NumericVector a, NumericVector b, NumericVector d, double rho, NumericMatrix Xi_a, NumericMatrix Xi_s, int origin_type, int m, int maxit, double tol);
 RcppExport SEXP _scTreeSim_sim_adb_origin_loop_cpp(SEXP origin_timeSEXP, SEXP aSEXP, SEXP bSEXP, SEXP dSEXP, SEXP rhoSEXP, SEXP Xi_aSEXP, SEXP Xi_sSEXP, SEXP origin_typeSEXP, SEXP mSEXP, SEXP maxitSEXP, SEXP tolSEXP) {
@@ -50,6 +70,7 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_scTreeSim_sim_adb_loop_cpp", (DL_FUNC) &_scTreeSim_sim_adb_loop_cpp, 5},
+    {"_scTreeSim_get_X", (DL_FUNC) &_scTreeSim_get_X, 10},
     {"_scTreeSim_sim_adb_origin_loop_cpp", (DL_FUNC) &_scTreeSim_sim_adb_origin_loop_cpp, 11},
     {NULL, NULL, 0}
 };
