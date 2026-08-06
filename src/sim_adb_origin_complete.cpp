@@ -128,25 +128,22 @@ List sim_adb_origin_loop_cpp(double origin_time,
   
   int ntype = a.size();
   
-  int n_divisions = 0;
-  int n_deaths    = 0;
-  int n_censored  = 0;   // children born after the present (height < 0)
-  
   // Pre-compute P0 over [0, origin_time]
-  double dx = origin_time / (m - 1.0);
-  arma::vec t_seq = arma::linspace(0.0, origin_time, m);
-  arma::mat P0 = get_X(rho, a, b, d, Xi_a, Xi_s, t_seq, dx, maxit, tol);
+  // double dx = origin_time / (m - 1.0);
+  // arma::vec t_seq = arma::linspace(0.0, origin_time, m);
+  // arma::mat P0 = get_X(rho, a, b, d, Xi_a, Xi_s, t_seq, dx, maxit, tol);
   
   // Helper: look up P0 at a given time since origin with linear interpolation
   auto lookup_p0 = [&](double height, int type) -> double {
-    if (rho >= 1.0) return 0.0;
-    double pos = height / dx;
-    int lo = (int)std::floor(pos);
-    int hi = lo + 1;
-    lo = std::max(0, std::min(lo, m - 1));
-    hi = std::max(0, std::min(hi, m - 1));
-    double frac = pos - std::floor(pos);
-    return (1.0 - frac) * P0(lo, type) + frac * P0(hi, type);
+    // if (rho >= 1.0) return 0.0;
+    // double pos = height / dx;
+    // int lo = (int)std::floor(pos);
+    // int hi = lo + 1;
+    // lo = std::max(0, std::min(lo, m - 1));
+    // hi = std::max(0, std::min(hi, m - 1));
+    // double frac = pos - std::floor(pos);
+    // return (1.0 - frac) * P0(lo, type) + frac * P0(hi, type);
+    return NULL;
   };
   
   // Simulation loop 
@@ -181,7 +178,6 @@ List sim_adb_origin_loop_cpp(double origin_time,
       // Explicit death check (original behavior)
       if (R::runif(0,1) < d[v_type[idx]]) {
         v_status[idx] = 0;  // Dies
-        n_deaths++;
         continue;
       }
       // Otherwise, it divides (handled below)
@@ -191,7 +187,6 @@ List sim_adb_origin_loop_cpp(double origin_time,
       
       if (R::runif(0,1) < p0_current) {
         v_status[idx] = 0;  // No sampled descendants
-        n_deaths++;
         continue;
       }
       // Otherwise, it divides
@@ -199,7 +194,6 @@ List sim_adb_origin_loop_cpp(double origin_time,
     
     // If not extinct, it must divide (since death is already accounted for in P0)
     v_status[idx] = 2;
-    n_divisions++;
     
     if (n_nodes + 2 > max_nodes) {
       max_nodes *= 2;
@@ -224,8 +218,7 @@ List sim_adb_origin_loop_cpp(double origin_time,
     bool   left_censored = left_height < 0;
     if (left_censored) { 
       left_lifetime = v_height[idx]; 
-      left_height = 0.0; 
-      n_censored++;
+      left_height = 0.0;
     }
     
     int li = n_nodes++;
@@ -250,8 +243,7 @@ List sim_adb_origin_loop_cpp(double origin_time,
     bool   right_censored = right_height < 0;
     if (right_censored) { 
       right_lifetime = v_height[idx]; 
-      right_height = 0.0; 
-      n_censored++;
+      right_height = 0.0;
     }
     
     int ri = n_nodes++;
@@ -281,9 +273,6 @@ List sim_adb_origin_loop_cpp(double origin_time,
     _["edges_from"]  = IntegerVector(v_edges_from.begin(),  v_edges_from.end()),
     _["edges_to"]    = IntegerVector(v_edges_to.begin(),    v_edges_to.end()),
     _["edge_lengths"]= NumericVector(v_edge_lengths.begin(),v_edge_lengths.end()),
-    _["root_edge"]   = root_lifetime,
-    _["n_divisions"] = n_divisions,
-    _["n_deaths"]    = n_deaths,
-    _["n_censored"]  = n_censored
+    _["root_edge"]   = root_lifetime
   );
 }

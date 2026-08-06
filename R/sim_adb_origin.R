@@ -218,15 +218,25 @@ sim_adb_origin_complete_fast <- function(origin_time, a, b, d, rho = 1,
                      tip.label = as.character(nodes$label[nodes$status %in% c(0,1)]))
   class(phylo_tree) <- "phylo"
   
-  # create treedata object
+  # collapse internal nodes with single children — these arise when one child
+  # branch was P0-pruned, leaving a degree-2 internal node in the skeleton tree
+  if (rho < 1) {
+    phylo_tree <- ape::collapse.singles(phylo_tree)
+  }
+  
+  # build treedata object
   tree <- treeio::as.treedata(phylo_tree)
   tree@phylo$root.edge <- root_edge
   tree@phylo$origin    <- origin_time
-  types <- dplyr::tibble(
-    node   = nodes$label,
-    status = nodes$status,
-    type   = as.factor(nodes$type)
-  ) |> dplyr::arrange(node)
+  
+  # recompute node labels after collapse.singles may have renumbered
+  data <- tibble::as_tibble(tree)
+  types <- nodes |>
+    dplyr::select(node = label, status, type) |>
+    dplyr::mutate(type = as.factor(type)) |>
+    dplyr::filter(node %in% data$node) |>
+    dplyr::arrange(node) |>
+    tibble::as_tibble()
   tree@data <- types
   
   tree
