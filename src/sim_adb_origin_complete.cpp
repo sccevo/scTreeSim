@@ -86,31 +86,27 @@ std::pair<int,int> sample_child_types(int parent_type,
                                       const NumericMatrix& Xi_as,
                                       const NumericMatrix& Xi_s,
                                       int ntype) {
-  std::vector<double> probs;
-  std::vector<std::pair<int,int>> combos;
+  double r = R::runif(0, 1);
+  double cum_prob = 0.0;
   
-  for (int j = 0; j < ntype; j++) {
-    for (int k = 0; k < ntype; k++) {
-      if (Xi_as(parent_type, j) > 0 && j != k) {
-        probs.push_back(Xi_as(parent_type, j));
-        combos.push_back({j, k});
-      }
-      if (Xi_s(parent_type, k) > 0 && j == k) {
-        probs.push_back(Xi_s(parent_type, k));
-        combos.push_back({k, k});
+  for (int i = 0; i < ntype; i++) {
+    // symmetric: both children type i
+    cum_prob += Xi_s(parent_type, i);
+    if (r < cum_prob) {
+      return {i, i};
+    }
+    // asymmetric: one child stays parent_type, other becomes type i
+    cum_prob += Xi_as(parent_type, i);
+    if (r < cum_prob) {
+      if (R::runif(0, 1) < 0.5) {
+        return {parent_type, i};
+      } else {
+        return {i, parent_type};
       }
     }
   }
-  
-  double total = 0; 
-  for (double p : probs) total += p;
-  double u = R::runif(0, 1) * total;
-  double cum = 0;
-  for (int i = 0; i < (int)probs.size(); i++) {
-    cum += probs[i];
-    if (u <= cum) return combos[i];
-  }
-  return combos.back();
+  // fallback (should not reach here if matrices sum to 1)
+  return {parent_type, parent_type};
 }
 
 // [[Rcpp::export]]
@@ -128,22 +124,21 @@ List sim_adb_origin_loop_cpp(double origin_time,
   
   int ntype = a.size();
   
-  // Pre-compute P0 over [0, origin_time]
-  // double dx = origin_time / (m - 1.0);
-  // arma::vec t_seq = arma::linspace(0.0, origin_time, m);
-  // arma::mat P0 = get_X(rho, a, b, d, Xi_a, Xi_s, t_seq, dx, maxit, tol);
+  //Pre-compute P0 over [0, origin_time]
+  double dx = origin_time / (m - 1.0);
+  arma::vec t_seq = arma::linspace(0.0, origin_time, m);
+  arma::mat P0 = get_X(rho, a, b, d, Xi_a, Xi_s, t_seq, dx, maxit, tol);
   
   // Helper: look up P0 at a given time since origin with linear interpolation
   auto lookup_p0 = [&](double height, int type) -> double {
-    // if (rho >= 1.0) return 0.0;
-    // double pos = height / dx;
-    // int lo = (int)std::floor(pos);
-    // int hi = lo + 1;
-    // lo = std::max(0, std::min(lo, m - 1));
-    // hi = std::max(0, std::min(hi, m - 1));
-    // double frac = pos - std::floor(pos);
-    // return (1.0 - frac) * P0(lo, type) + frac * P0(hi, type);
-    return NULL;
+    if (rho >= 1.0) return 0.0;
+    double pos = height / dx;
+    int lo = (int)std::floor(pos);
+    int hi = lo + 1;
+    lo = std::max(0, std::min(lo, m - 1));
+    hi = std::max(0, std::min(hi, m - 1));
+    double frac = pos - std::floor(pos);
+    return (1.0 - frac) * P0(lo, type) + frac * P0(hi, type);
   };
   
   // Simulation loop 
@@ -208,9 +203,15 @@ List sim_adb_origin_loop_cpp(double origin_time,
     int right_id = event_counter + 2;
     event_counter += 2;
     
-    std::pair<int,int> child_types = sample_child_types(v_type[idx], Xi_a, Xi_s, ntype);
-    int lt = child_types.first;
-    int rt = child_types.second;
+    int lt, rt;
+    if (ntype == 1) {
+      lt = origin_type;
+      rt = origin_type;
+    } else {
+      auto child_types = sample_child_types(v_type[idx], Xi_a, Xi_s, ntype);
+      lt = child_types.first;
+      rt = child_types.second;
+    }
     
     // --- left child ---
     double left_lifetime = R::rgamma(b[lt], a[lt]);
