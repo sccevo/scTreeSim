@@ -180,7 +180,7 @@ sim_adb_origin_complete_fast <- function(origin_time, a, b, d, rho = 1,
                                          origin_type = 0,
                                          Xi_as = matrix(0), Xi_s = matrix(1),
                                          min_tips = 2,
-                                         m = 500, maxit = 100, tol = 1e-6) {
+                                         m = 1024, maxit = 100, tol = 1e-6) {
   
   raw <- sim_adb_origin_loop_cpp(origin_time, a, b, d, rho, Xi_as, Xi_s,
                                  origin_type, m, maxit, tol)
