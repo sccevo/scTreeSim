@@ -115,7 +115,7 @@ List sim_adb_origin_loop_cpp(double origin_time,
                              NumericVector b,
                              NumericVector d,
                              double rho,
-                             NumericMatrix Xi_a,
+                             NumericMatrix Xi_as,
                              NumericMatrix Xi_s,
                              int origin_type = 0,
                              int m = 1024,
@@ -127,7 +127,7 @@ List sim_adb_origin_loop_cpp(double origin_time,
   //Pre-compute P0 over [0, origin_time]
   double dx = origin_time / (m - 1.0);
   arma::vec t_seq = arma::linspace(0.0, origin_time, m);
-  arma::mat P0 = get_X(rho, a, b, d, Xi_a, Xi_s, t_seq, dx, maxit, tol);
+  arma::mat P0 = get_X(rho, a, b, d, Xi_as, Xi_s, t_seq, dx, maxit, tol);
   
   // Helper: look up P0 at a given time since origin with linear interpolation
   auto lookup_p0 = [&](double height, int type) -> double {
@@ -188,8 +188,10 @@ List sim_adb_origin_loop_cpp(double origin_time,
     }
     
     // If not extinct, it must divide (since death is already accounted for in P0)
+    //creates two new children
     v_status[idx] = 2;
     
+    //resize storage array if you run out of space
     if (n_nodes + 2 > max_nodes) {
       max_nodes *= 2;
       v_id.resize(max_nodes);    v_type.resize(max_nodes);
@@ -199,20 +201,24 @@ List sim_adb_origin_loop_cpp(double origin_time,
       v_status.resize(max_nodes); v_height.resize(max_nodes);
     }
     
+    // assigns ids to the new children
     int left_id  = event_counter + 1;
     int right_id = event_counter + 2;
     event_counter += 2;
     
     int lt, rt;
+    // single type case
     if (ntype == 1) {
       lt = origin_type;
       rt = origin_type;
     } else {
-      auto child_types = sample_child_types(v_type[idx], Xi_a, Xi_s, ntype);
+    // multi type case
+      auto child_types = sample_child_types(v_type[idx], Xi_as, Xi_s, ntype);
       lt = child_types.first;
       rt = child_types.second;
     }
     
+    // sample lifetimes and properties for each new child
     // --- left child ---
     double left_lifetime = R::rgamma(b[lt], a[lt]);
     double left_height   = v_height[idx] - left_lifetime;
