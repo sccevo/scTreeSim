@@ -229,7 +229,9 @@ sim_adb_origin_complete_fast <- function(origin_time, a, b, d, rho = 1,
   ) |> dplyr::arrange(node)
   tree@data <- types
   
-  phylo_obj = prune_tree(obj = tree, rho = rho, min_tips = min_tips, collapse = TRUE) 
-  return(phylo_obj)
+  if (rho < 1) {
+    tree <- prune_tree(obj = tree, rho = rho, min_tips = min_tips, collapse = TRUE) 
+  }
+  return(tree)
 }
 

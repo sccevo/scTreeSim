@@ -9,7 +9,7 @@ get_X <- function(rho, a, b, d, Xi_a, Xi_s, t, dx, maxit, tol) {
     .Call(`_scTreeSim_get_X`, rho, a, b, d, Xi_a, Xi_s, t, dx, maxit, tol)
 }
 
-sim_adb_origin_loop_cpp <- function(origin_time, a, b, d, rho, Xi_a, Xi_s, origin_type = 0L, m = 1024L, maxit = 100L, tol = 1e-6) {
-    .Call(`_scTreeSim_sim_adb_origin_loop_cpp`, origin_time, a, b, d, rho, Xi_a, Xi_s, origin_type, m, maxit, tol)
+sim_adb_origin_loop_cpp <- function(origin_time, a, b, d, rho, Xi_as, Xi_s, origin_type = 0L, m = 1024L, maxit = 100L, tol = 1e-6) {
+    .Call(`_scTreeSim_sim_adb_origin_loop_cpp`, origin_time, a, b, d, rho, Xi_as, Xi_s, origin_type, m, maxit, tol)
 }
 
