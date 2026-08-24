@@ -167,23 +167,18 @@ sim_adb_origin_complete <- function(origin_time, a, b, d, origin_type = 0, Xi_as
 #' @param a vector of scale parameters per type
 #' @param b vector of shape parameters per type
 #' @param d vector of death probabilities per type
-#' @param rho sampling probability
 #' @param origin_type one of 0,...,n-1 where n is the number of types
 #' @param Xi_as matrix of asymmetric type transition probabilities
 #' @param Xi_s matrix of symmetric type transition probabilities
 #' @param min_tips minimum number of tips in the tree
-#' @param m number of grid points for P0 approximation
-#' @param maxit maximum iterations for P0 solver
-#' @param tol convergence tolerance for P0 solver
 #' @export
-sim_adb_origin_complete_fast <- function(origin_time, a, b, d, rho = 1,
+sim_adb_origin_complete_fast <- function(origin_time, a, b, d,
                                          origin_type = 0,
                                          Xi_as = matrix(0), Xi_s = matrix(1),
-                                         min_tips = 2,
-                                         m = 512, maxit = 100, tol = 1e-6) {
+                                         min_tips = 2) {
   
-  raw <- sim_adb_origin_loop_cpp(origin_time, a, b, d, 1, Xi_as, Xi_s,
-                                 origin_type, m, maxit, tol)
+  raw <- sim_adb_origin_loop_cpp(origin_time, a, b, d, Xi_as, Xi_s,
+                                 origin_type)
   
   nodes <- as.data.frame(raw[c("id","height","type","parent","leftchild","rightchild","status")])
   root_edge   <- raw$root_edge
@@ -229,9 +224,6 @@ sim_adb_origin_complete_fast <- function(origin_time, a, b, d, rho = 1,
   ) |> dplyr::arrange(node)
   tree@data <- types
   
-  if (rho < 1) {
-    tree <- prune_tree(obj = tree, rho = rho, min_tips = min_tips, collapse = TRUE) 
-  }
   return(tree)
 }
 

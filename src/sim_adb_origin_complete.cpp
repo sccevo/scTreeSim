@@ -4,82 +4,6 @@
 #include <vector>
 using namespace Rcpp;
 
-// partial convolution using fft
-arma::vec convolve_fft(
-    const arma::cx_vec& fx, 
-    const arma::vec& y, 
-    int n, 
-    double eps) {
-  int nz = 2 * y.n_elem;  
-  arma::vec y_ext = y;
-  y_ext.resize(nz);  
-  arma::cx_vec fy = fft(y_ext);   
-  arma::cx_vec fz = fx % fy;      
-  arma::cx_vec z = ifft(fz); 
-  return real(z.head(n)) * eps;
-}
-
-// Extinction prob - corrected version
-// [[Rcpp::export]]
-arma::mat get_X(
-    double rho, 
-    NumericVector a, 
-    NumericVector b, 
-    NumericVector d,
-    NumericMatrix Xi_a,
-    NumericMatrix Xi_s,
-    arma::vec t, 
-    double dx, 
-    int maxit,
-    double tol) {
-  int ntype = a.size();
-  int ntime = t.size();
-  NumericVector t_nv = wrap(t);
-  
-  arma::mat X00(ntime, ntype); 
-  arma::cx_mat F_t(2*ntime, ntype);
-  
-  for (int i = 0; i < ntype; i++){
-    NumericVector pdf_nv = Rcpp::dgamma(t_nv, b(i), a(i));
-    NumericVector cdf_nv = Rcpp::pgamma(t_nv, b(i), a(i));
-    arma::vec pdf = as<arma::vec>(pdf_nv);
-    arma::vec cdf = as<arma::vec>(cdf_nv);
-    
-    // P0 initial: probability of no sampled descendants
-    // This includes both: 
-    // 1. Lineage survives to present but is unsampled: (1-rho) * (1-cdf)
-    // 2. Lineage dies before present: d * cdf
-    X00.col(i) = (1.0 - rho) * (1.0 - cdf) + d(i) * cdf;
-    
-    arma::vec f_t = arma::join_cols(pdf, arma::zeros(pdf.n_elem));
-    F_t.col(i) = fft(f_t);
-  }
-  
-  arma::mat X0 = X00;
-  arma::mat Xi = X00;
-  double err = 1;
-  int it = 0;
-  
-  while (err > tol && it < maxit) {
-    for (int j=0; j < ntype; j++) {
-      arma::vec sumX(ntime);
-      for (int k=0; k < ntype; k++){
-        sumX += Xi_a(j,k) * (X0.col(j) % X0.col(k)) +
-          Xi_s(j,k) * (X0.col(k) % X0.col(k));
-      }
-      arma::vec I = convolve_fft(F_t.col(j), sumX, ntime, dx);
-      Xi.col(j) = X00.col(j) + (1.0 - d(j)) * I; 
-    }
-    err = arma::norm(X0-Xi, 2);
-    X0 = Xi;
-    it++;
-  }
-  if (it == maxit) {
-    Rcpp::warning("max iterations reached with error: %f", err);
-  }
-  
-  return X0;
-}
 
 // helper: sample child types
 std::pair<int,int> sample_child_types(int parent_type,
@@ -114,35 +38,14 @@ List sim_adb_origin_loop_cpp(double origin_time,
                              NumericVector a,
                              NumericVector b,
                              NumericVector d,
-                             double rho,
                              NumericMatrix Xi_as,
                              NumericMatrix Xi_s,
-                             int origin_type = 0,
-                             int m = 1024,
-                             int maxit = 100,
-                             double tol = 1e-6) {
+                             int origin_type = 0) {
   
   int ntype = a.size();
   
-  //Pre-compute P0 over [0, origin_time]
-  double dx = origin_time / (m - 1.0);
-  arma::vec t_seq = arma::linspace(0.0, origin_time, m);
-  arma::mat P0 = get_X(rho, a, b, d, Xi_as, Xi_s, t_seq, dx, maxit, tol);
-  
-  // Helper: look up P0 at a given time since origin with linear interpolation
-  auto lookup_p0 = [&](double height, int type) -> double {
-    if (rho >= 1.0) return 0.0;
-    double pos = height / dx;
-    int lo = (int)std::floor(pos);
-    int hi = lo + 1;
-    lo = std::max(0, std::min(lo, m - 1));
-    hi = std::max(0, std::min(hi, m - 1));
-    double frac = pos - std::floor(pos);
-    return (1.0 - frac) * P0(lo, type) + frac * P0(hi, type);
-  };
-  
   // Simulation loop 
-  int max_nodes = 1 << 20;
+  int max_nodes = 1024;
   std::vector<int>    v_id(max_nodes), v_type(max_nodes),
   v_parent(max_nodes, NA_INTEGER),
   v_left(max_nodes, NA_INTEGER),
@@ -152,6 +55,7 @@ List sim_adb_origin_loop_cpp(double origin_time,
   std::vector<double> v_edge_lengths;
   std::vector<int>    v_edges_from, v_edges_to;
   
+  // drawing root note parameters
   double root_lifetime = R::rgamma(b[origin_type], a[origin_type]);
   double root_height   = origin_time - root_lifetime;
   
@@ -161,6 +65,8 @@ List sim_adb_origin_loop_cpp(double origin_time,
   
   int event_counter = 1;
   int n_nodes = 1;
+  
+  // event stack: store indices into v_ arrays (0-based)
   std::vector<int> event_stack;
   event_stack.push_back(0);
   
@@ -168,23 +74,11 @@ List sim_adb_origin_loop_cpp(double origin_time,
     int idx = event_stack.back();
     event_stack.pop_back();
     
-    // For rho = 1, we need explicit death events
-    if (rho >= 1.0) {
-      // Explicit death check (original behavior)
-      if (R::runif(0,1) < d[v_type[idx]]) {
-        v_status[idx] = 0;  // Dies
-        continue;
-      }
-      // Otherwise, it divides (handled below)
-    } else {
-      // For rho < 1, use P0 for pruning
-      double p0_current = lookup_p0(v_height[idx], v_type[idx]);
-      
-      if (R::runif(0,1) < p0_current) {
-        v_status[idx] = 0;  // No sampled descendants
-        continue;
-      }
-      // Otherwise, it divides
+
+    // Explicit death check (original behavior)
+    if (R::runif(0,1) < d[v_type[idx]]) {
+      v_status[idx] = 0;  // Dies
+      continue;
     }
     
     // If not extinct, it must divide (since death is already accounted for in P0)
