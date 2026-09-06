@@ -81,7 +81,7 @@ List sim_adb_origin_loop_cpp(double origin_time,
       continue;
     }
     
-    // If not extinct, it must divide (since death is already accounted for in P0)
+    // If not extinct, it must divide
     //creates two new children
     v_status[idx] = 2;
     

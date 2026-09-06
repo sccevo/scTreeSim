@@ -24,18 +24,22 @@
 #'   (e.g. "0_A_B_0_0"), where "0" = unedited and "-" = silenced/dropout
 #'   (the silenced state; every site reads "-" once a barcode is silenced)
 #' @export
-typewriter_barcodes <- function(tree, k, lambda_vec, silencing_rate = 0,
-                                dropout_p = 0, m = length(lambda_vec), chars) {
+typewriter_barcodes <- function(tree, k, lambda_vec, silencing_rate_vec = (0),
+                                dropout_p_vec = (0), m = length(lambda_vec), chars) {
   
   stopifnot(methods::is(tree, "treedata"))
+  if (length(silencing_rate_vec) == 1) {
+    silencing_rate_vec <- rep(silencing_rate_vec[1], m)
+  }
+  if (length(dropout_p_vec) == 1) {
+    dropout_p_vec <- rep(dropout_p_vec[1], m)
+  }
   stopifnot(length(lambda_vec) == m)
+  stopifnot(length(silencing_rate_vec) == m)
+  stopifnot(length(dropout_p_vec) == m)
   
   silenced_state <- "-"
-  # silencing is drawn from the same event race as ordinary edits: each
-  # "character" competes at its own rate. chars/sample_p describe the
-  # edit-outcome states only; silenced_state is a further, separate
-  # competing outcome with its own rate (silencing_rate), not folded into
-  # sample_p, since it applies to the WHOLE barcode rather than one site.
+  # draw a sample charachter
   sample_p <- rep(1 / length(chars), length(chars))
   
   tree_df <- tree %>% tibble::as_tibble() %>% as.data.frame()
@@ -56,6 +60,8 @@ typewriter_barcodes <- function(tree, k, lambda_vec, silencing_rate = 0,
   bc_cols <- vector("list", m)
   for (bc in seq_len(m)) {
     lambda <- lambda_vec[bc]
+    silencing_rate <- silencing_rate_vec[bc]
+    dropout_p <- dropout_p_vec[bc]
     
     state_at <- list()
     silenced_at <- list()

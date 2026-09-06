@@ -5,8 +5,7 @@
 #' transition matrix \eqn{P(t) = \exp(Qt)}, where \eqn{Q} is parameterized by
 #' \code{lambda} and normalized to its equilibrium frequencies.
 #'
-#' @param tree a treedata object (as returned by e.g. \code{sim_adb_origin_samp});
-#'   node identity is taken from \code{tree@data$node}
+#' @param tree a treedata object
 #' @param l sequence length (number of binary sites)
 #' @param lambda rate parameter for the Q matrix; equilibrium frequency of state
 #'   \code{"0"} is \code{lambda / (lambda + 1)}
