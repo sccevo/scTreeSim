@@ -48,7 +48,7 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
 #' @importFrom stats rgamma runif
 sim_adb_ntaxa_complete_fast <- function(ntaxa, a, b, d, origin_type = 0,
                                         Xi_as = matrix(0), Xi_s = matrix(0)) {
-  raw <- sim_adb_loop_cpp(ntaxa, a, b, d, origin_type)
+  raw <- sim_adb_loop_cpp(ntaxa, a, b, d, Xi_as, Xi_s, origin_type)
   
   nodes <- as.data.frame(raw[c("id","height","type","parent","leftchild","rightchild","status")])
   root_edge <- raw$root_edge

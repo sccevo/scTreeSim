@@ -6,7 +6,7 @@ using namespace Rcpp;
 
 
 // helper: sample child types
-std::pair<int,int> sample_child_types(int parent_type,
+std::pair<int,int> sample_child_types_ntaxa(int parent_type,
                                       const NumericMatrix& Xi_as,
                                       const NumericMatrix& Xi_s,
                                       int ntype) {
@@ -112,10 +112,13 @@ List sim_adb_loop_cpp(int ntaxa,
         rt = origin_type;
       } else {
         // multi-type: sample child types based on transition matrices
-        auto child_types = sample_child_types(ev.type, Xi_as, Xi_s, ntype);
+        auto child_types = sample_child_types_ntaxa(ev.type, Xi_as, Xi_s, ntype);
         lt = child_types.first;
         rt = child_types.second;
       }
+
+      double lh = ev.height + R::rgamma(b[lt], a[lt]);
+      double rh = ev.height + R::rgamma(b[rt], a[rt]);
 
       // sample lifetimes and properties for each new child
       // --- left child ---

@@ -12,8 +12,8 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // sim_adb_loop_cpp
-List sim_adb_loop_cpp(int ntaxa, NumericVector a, NumericVector b, NumericVector d, int origin_type);
-RcppExport SEXP _scTreeSim_sim_adb_loop_cpp(SEXP ntaxaSEXP, SEXP aSEXP, SEXP bSEXP, SEXP dSEXP, SEXP origin_typeSEXP) {
+List sim_adb_loop_cpp(int ntaxa, NumericVector a, NumericVector b, NumericVector d, NumericMatrix Xi_as, NumericMatrix Xi_s, int origin_type);
+RcppExport SEXP _scTreeSim_sim_adb_loop_cpp(SEXP ntaxaSEXP, SEXP aSEXP, SEXP bSEXP, SEXP dSEXP, SEXP Xi_asSEXP, SEXP Xi_sSEXP, SEXP origin_typeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -21,8 +21,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericVector >::type a(aSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type b(bSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type d(dSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type Xi_as(Xi_asSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type Xi_s(Xi_sSEXP);
     Rcpp::traits::input_parameter< int >::type origin_type(origin_typeSEXP);
-    rcpp_result_gen = Rcpp::wrap(sim_adb_loop_cpp(ntaxa, a, b, d, origin_type));
+    rcpp_result_gen = Rcpp::wrap(sim_adb_loop_cpp(ntaxa, a, b, d, Xi_as, Xi_s, origin_type));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -45,7 +47,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_scTreeSim_sim_adb_loop_cpp", (DL_FUNC) &_scTreeSim_sim_adb_loop_cpp, 5},
+    {"_scTreeSim_sim_adb_loop_cpp", (DL_FUNC) &_scTreeSim_sim_adb_loop_cpp, 7},
     {"_scTreeSim_sim_adb_origin_loop_cpp", (DL_FUNC) &_scTreeSim_sim_adb_origin_loop_cpp, 7},
     {NULL, NULL, 0}
 };
