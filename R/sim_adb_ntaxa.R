@@ -39,8 +39,8 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
 #' @param b vector of shape parameters per type
 #' @param d vector of death probabilities per type
 #' @param origin_type one of 0,...,n-1 where n is the number of types
-#' @param Xi_as matrix of asymetric type transition probabilities
-#' @param Xi_s matrix of symetric type transition probabilities
+#' @param Xi_as matrix of asymmetric type transition probabilities
+#' @param Xi_s matrix of symmetric type transition probabilities
 #' @export
 #' @useDynLib scTreeSim, .registration = TRUE
 #' @importFrom Rcpp sourceCpp
@@ -109,8 +109,8 @@ sim_adb_ntaxa_complete_fast <- function(ntaxa, a, b, d, origin_type = 0,
 #' @param b vector of shape parameters per type
 #' @param d vector of death probabilities per type
 #' @param origin_type one of 0,...,n-1 where n is the number of types
-#' @param Xi_as matrix of asymetric type transition probabilities
-#' @param Xi_s matrix of symetric type transition probabilities
+#' @param Xi_as matrix of asymmetric type transition probabilities
+#' @param Xi_s matrix of symmetric type transition probabilities
 #' @export
 #' @importFrom magrittr "%>%"
 #' @importFrom stats rgamma runif
