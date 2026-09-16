@@ -10,10 +10,12 @@ export(sim_adb_origin_complete_fast)
 export(sim_adb_origin_samp)
 export(sim_barcode_nonseq)
 export(sim_binary_ontree)
-export(sim_expression_ontree_gene)
+export(sim_expression_ou)
 export(typewriter_barcodes)
 importFrom(Rcpp,sourceCpp)
 importFrom(magrittr,"%>%")
-importFrom(stats,rgamma)
-importFrom(stats,runif)
+importFrom(stats,
+  rgamma,
+  runif
+)
 useDynLib(scTreeSim, .registration = TRUE)
