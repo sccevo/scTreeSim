@@ -10,8 +10,8 @@
 #' @param lambda_vec array of barcode-specific editing rates (length m)
 #' @param silencing_rate_vec scalar or length-m rate(s) at which an entire
 #'   barcode is silenced, racing against the editing process
-#' @param dropout_p_vec scalar or length-m probability that an individual
-#'   tip site is masked
+#' @param dropout_p_vec scalar or length-m probability that a
+#'   barcode copy drops out at a tip
 #' @param m number of tapes per cell
 #' @param chars array of unique characters/state labels to be inserted
 #'
@@ -19,7 +19,8 @@
 #'   per barcode copy: \code{node}, \code{barcode_1}, ..., \code{barcode_m},
 #'   each entry a length-k string with positions separated by "_"
 #'   (e.g. "0_A_B_0_0"), where "0" = unedited and "-" = silenced/dropout
-#'   (the silenced state; every site reads "-" once a barcode is silenced)
+#'   (the silenced state; every site reads "-" once a barcode is silenced
+#'   or dropped out)
 #' @export
 typewriter_barcodes <- function(tree, k, lambda_vec, silencing_rate_vec = (0),
                                 dropout_p_vec = (0), m = length(lambda_vec), chars) {
@@ -101,9 +102,8 @@ typewriter_barcodes <- function(tree, k, lambda_vec, silencing_rate_vec = (0),
     if (dropout_p > 0) {
       for (nd in tip_nodes) {
         key <- as.character(nd)
-        if (!silenced_at[[key]]) {
-          mask <- stats::runif(k) < dropout_p
-          state_at[[key]][mask] <- silenced_state
+        if (!silenced_at[[key]] && stats::runif(1) < dropout_p) {
+          state_at[[key]][] <- silenced_state
         }
       }
     }
