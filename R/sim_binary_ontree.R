@@ -1,4 +1,12 @@
 #' Binary substitution model along a tree, with error and gamma spikes
+#' 
+#' The binary model and the respective code logic has been adapted from 
+#' BEAST phylonco paper and software as cited below.
+#' Paper: Chen, K., Moravec, J. C., Gavryushkin, A., Welch, D., & Drummond, A. J. (2022). 
+#' Accounting for errors in data improves divergence time estimates in single-cell cancer evolution. 
+#' Molecular biology and evolution, 39(8), msac143.
+#' Beast phylonco software: A BEAST2 package for single-cell phylogenetic analysis of cancer evolution.
+#' source: https://github.com/bioDS/beast-phylonco-paper/tree/main
 #'
 #' Simulates one or more binary character sequences along a fixed tree under
 #' a general binary substitution model. Each site evolves independently with

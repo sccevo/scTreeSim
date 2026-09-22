@@ -1,4 +1,12 @@
 #' Simulator of Sequentially-Edited (TypeWriter-style) Barcodes
+#' 
+#' Parts of this code contains adaptations of code from Antoine Zwaans's implementation 
+#' of sequential barcode simulator for SciPhy software with dropout features
+#' source: https://github.com/azwaans/tidetree-dropout/blob/main/src/tidetree/simulation/SimulatedAlignment.java
+#' 
+#' R version of the code has been adapted from Nicola Mulberry's implementation
+#' source: https://github.com/sccevo/scTreeSim/blob/barcode_simulator/R/typewriter_barcodes.R
+#' The original authors and their respective licenses are retained where applicable.
 #'
 #' Simulates barcodes under a sequential/left-to-right editing process
 #' (unedited sites are filled in position order at rate lambda, as a

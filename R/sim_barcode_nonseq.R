@@ -1,5 +1,10 @@
 #' Non-sequential (TiDeTree-style) Barcode Simulator
 #'
+#' This code contains adaptations of code from Sophie Seidel's TideTree implementation
+#' and Antoine Zwaans's implementation with dropout
+#' The original authors and their respective licenses are retained where applicable.
+#' source: https://github.com/azwaans/tidetree-dropout/blob/main/src/tidetree/simulation/SimulatedAlignment.java
+#'  
 #' Simulates a single barcode with k independent sites under the
 #' Edit-and-Silencing model: each site evolves as a continuous-time Markov
 #' chain with three fates: staying unedited, transitioning to one of E

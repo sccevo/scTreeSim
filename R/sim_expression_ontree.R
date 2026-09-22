@@ -1,5 +1,7 @@
 #' Ornstein-Uhlenbeck Model for Gene Expression along a tree
 #'
+#' Code originally written by Dr. Laura Tomas Lopez, Computational Evolution Group.
+#' 
 #' Simulates a single gene expression trait along a fixed tree under an
 #' Ornstein-Uhlenbeck (OU) process, with a type-dependent optimum (theta).
 #' Setting \code{alpha = 0} reduces the model to Brownian motion.
