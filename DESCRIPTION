@@ -1,14 +1,12 @@
 Package: scTreeSim
-Title: Simulation of single-cell lineage trees & asociated data
-Version: 0.0.0.9000
+Title: Simulation of single-cell lineage trees & associated data
+Version: 0.1.1
 Authors@R: 
     person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+Description: Simulates single-cell lineage trees under an Age-Dependent Branching process, with optional multi-type dynamics, and layers multi-modal data on top of a fixed tree: gene expression (Ornstein-Uhlenbeck), sequential (TypeWriter-style) and non-sequential (Edit-and-Silencing / TiDeTree-style) barcodes, and a binary trait model with error and division-triggered mutation spikes.
+License: usethis::use_mit_license()
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
 Imports:
     ape,
     assertthat,
@@ -17,5 +15,9 @@ Imports:
     dplyr,
     tibble,
     treeio,
-    TreeSim
+    TreeSim,
+    Rcpp,
+    RcppArmadillo
 VignetteBuilder: knitr
+LinkingTo: Rcpp, RcppArmadillo
+Config/roxygen2/version: 8.1.0

@@ -17,77 +17,160 @@ knitr::opts_chunk$set(
 ```{r setup, message=FALSE}
 library(scTreeSim)
 library(ggtree)
-library(dplyr) # fix
+library(dplyr)
 set.seed(12)
-
 ```
-## Single-type trees
-Two options: by time of origin or by number of (extant) taxa
+
+This vignette covers the two ways to simulate a tree (by origin time or by
+number of taxa), how to simulate a multi-type tree, and how to layer each of
+the package's data modalities : gene expression, sequential and
+non-sequential barcodes, and a binary trait on top of a single fixed tree.
+
+# Simulating trees
+
+## By origin time
+
+Simulates forward from a single ancestor for a fixed amount of time
+(`t_or`), so the number of resulting tips is random.
+
 ```{r}
 shape <- 100
 av_lifetime <- 1
 d <- 0.08
-scale <- av_lifetime/shape
+scale <- av_lifetime / shape
 t_or <- 6
-ntaxa <- 2^6 
-# simulate:
-dat1 <- sim_adb_origin_complete(t_or, scale, shape, d)
-dat2 <- sim_adb_ntaxa_complete(ntaxa, scale, shape, d)
 
-dat1
-```
-Object returned is a treedata object (from treeio).
-
-### Visualize
- Note: extinct lineages will show here
-  
-```{r, fig.show="hold", out.width="40%"}
-plot(dat1@phylo, show.tip.label=FALSE, root.edge=TRUE)
-plot(dat2@phylo, show.tip.label=FALSE, root.edge=TRUE)
+tree_by_time <- sim_adb_origin_complete_fast(t_or, scale, shape, d)
+plot(tree_by_time@phylo, show.tip.label = FALSE, root.edge = TRUE)
 ```
 
-### Sampled tree
- this also prunes extinct lineages
+## By number of taxa
 
-```{r, fig.show="hold", out.width="40%"}
-rho <- 0.5 # sampling at present
-dat1 <- sim_adb_origin_samp(t_or, scale, shape, d, rho)
-dat2 <- sim_adb_ntaxa_samp(ntaxa, scale, shape, d, rho)
+Simulates forward until a fixed number of extant taxa (`ntaxa`) is reached,
+so the tree's time span is random instead.
 
-plot(dat1@phylo, show.tip.label=FALSE, root.edge=FALSE)
-plot(dat2@phylo, show.tip.label=FALSE, root.edge=FALSE) 
+```{r}
+ntaxa <- 2^6
 
+tree_by_ntaxa <- sim_adb_ntaxa_complete_fast(ntaxa, scale, shape, d)
+plot(tree_by_ntaxa@phylo, show.tip.label = FALSE, root.edge = TRUE)
 ```
 
-## Multi-type trees
+Both return a `treedata` object (from `treeio`). Extinct lineages are still
+present in these trees; sampling at present and pruning extinct lineages is
+covered next.
+
+## Sampling and pruning
+
+`sim_adb_origin_samp()` (and its `ntaxa` counterpart) additionally samples
+tips at present with probability `rho` and prunes extinct/unsampled
+lineages, giving the tree that is actually observed.
 
 ```{r, fig.show="hold", out.width="40%"}
-# parameters
+rho <- 0.5
+
+dat_sampled <- sim_adb_origin_samp(t_or, scale, shape, d, rho)
+plot(dat_sampled@phylo, show.tip.label = FALSE, root.edge = FALSE)
+```
+
+# Multi-type trees
+
+Passing per-type rates and type-transition matrices (`Xi_as`, `Xi_s`)
+simulates a tree in which cells switch between discrete types. This is the
+tree used for every data modality in the rest of this vignette.
+
+```{r}
 ntype <- 2
 origin_type <- 0
-shape <- c(100,100)
-av_lifetime <- rep(1, ntype)
-scale <- av_lifetime/shape
-rho <- 0.8
-t_or <- 7 
-d <- c(0.01, 0.7)
-# transition matrices
-r <- 0.2
-Xi_as <- matrix(c(0.0, 0.0, r, 0.0), nrow=ntype, ncol=ntype)
-Xi_s <- matrix(c(1-r, 0.0, 0.0, 1.0), nrow=ntype, ncol=ntype)
-
-dat1 <- sim_adb_origin_samp(t_or, scale, shape, d, rho, origin_type, Xi_as, Xi_s, collapse=F)
-
-# another example
-r <- 0.11
-Xi_as <- matrix(c(0.0, 0.0, r, 0.0), nrow=ntype, ncol=ntype)
-Xi_s <- matrix(c(1-r, 0.0, 0.0, 1.0), nrow=ntype, ncol=ntype)
-d <- c(0.1, 0.1)
 shape <- c(100, 1)
-scale <- av_lifetime/shape
-dat2 <- sim_adb_origin_samp(t_or, scale, shape, d, rho, origin_type, Xi_as=Xi_as, Xi_s=Xi_s, collapse=F)
+av_lifetime <- rep(1, ntype)
+scale <- av_lifetime / shape
+rho <- 0.8
+t_or <- 7
+d <- c(0.1, 0.1)
 
-# plot with node/tip types
-ggtree(dat1, aes(color=type)) + geom_rootedge(color="#F8766D") + geom_tippoint()
-ggtree(dat2, aes(color=type)) + geom_rootedge(color="#F8766D") + geom_tippoint()
+r <- 0.11
+Xi_as <- matrix(c(0.0, 0.0, r, 0.0), nrow = ntype, ncol = ntype)
+Xi_s  <- matrix(c(1 - r, 0.0, 0.0, 1.0), nrow = ntype, ncol = ntype)
+
+# collapse = FALSE keeps every division node in the tree, including ones
+# with only one surviving child -- required for the division-triggered
+# spikes used in the binary trait model below
+dat2 <- sim_adb_origin_samp(t_or, scale, shape, d, rho, origin_type,
+                             Xi_as = Xi_as, Xi_s = Xi_s, collapse = FALSE)
+
+ggtree(dat2, aes(color = type)) +
+  geom_rootedge(color = "#F8766D") +
+  geom_tippoint()
+```
+
+# Gene expression (Ornstein-Uhlenbeck)
+
+Simulates one continuous trait per node under an OU process with a
+type-dependent optimum (`theta`). `alpha = 0` reduces this to Brownian
+motion.
+
+```{r}
+theta <- data.frame(type = factor(c(0, 1)), theta = c(0, 3))
+stopifnot(all(levels(dat2@data$type) %in% levels(theta$type)))
+
+expr <- sim_expression_ou(dat2, alpha = 0.5, sigmasq = 0.2,
+                           root_value = 0, theta = theta)
+head(expr)
+```
+
+```{r}
+expr %>%
+  left_join(dat2@data %>% select(node, status), by = "node") %>%
+  filter(status == 1) %>%
+  ggplot2::ggplot(ggplot2::aes(x = type, y = expr)) +
+  ggplot2::geom_boxplot()
+```
+
+# Sequential (TypeWriter-style) barcodes
+
+Sites are edited left-to-right, one at a time, as a Poisson process; an
+independent whole-barcode silencing process competes against editing, and
+dropout can additionally mask individual tip sites.
+
+```{r}
+k <- 5
+chars <- c("A", "B", "C", "D")
+lambda_vec <- c(0.3, 1.5)  # one rate per barcode copy
+
+bc_seq <- typewriter_barcodes(dat2, k, lambda_vec,
+                               silencing_rate = 0, dropout_p = 0,
+                               m = length(lambda_vec), chars = chars)
+head(bc_seq)
+```
+
+# Non-sequential (TiDeTree-style) barcodes
+
+Each of the `k` sites evolves independently under a continuous-time Markov
+chain, editing only within a bounded time window, with its own competing
+silencing rate.
+
+```{r}
+k <- 10
+edit_rates <- c(0.5, 0.3, 0.2)  # E = 3 possible edit outcomes
+silencing_rate <- 0.05
+edit_height <- 5    # window ends 5 time units before present
+edit_duration <- 3  # window spans (edit_height - edit_duration, edit_height]
+
+bc_nonseq <- sim_barcode_nonseq(dat2, k, edit_rates, silencing_rate,
+                                 edit_height, edit_duration, dropout_p = 0)
+head(bc_nonseq)
+```
+
+# Binary trait, with error and division-triggered spikes
+
+A binary trait evolving under a 2-state CTMC, with optional
+gamma-distributed mutation spikes at branches where a division occurred,
+and optional false positive/negative error at the tips.
+
+```{r}
+bc_binary <- sim_binary_ontree(dat2, l = 10, gamma_spike = TRUE,
+                                spike_mean = 0.3, spike_shape = 2,
+                                alpha = 0.05, beta = 0.02)
+head(bc_binary)
 ```
