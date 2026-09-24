@@ -14,8 +14,6 @@ export(sim_expression_ou)
 export(typewriter_barcodes)
 importFrom(Rcpp,sourceCpp)
 importFrom(magrittr,"%>%")
-importFrom(stats,
-  rgamma,
-  runif
-)
+importFrom(stats,rgamma)
+importFrom(stats,runif)
 useDynLib(scTreeSim, .registration = TRUE)
