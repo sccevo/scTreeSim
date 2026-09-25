@@ -3,14 +3,15 @@
 #' Removes dead particles and then samples tips at present, either with
 #' probability `rho` each or as a fixed number `ntips`.
 #' @param obj treedata object
-#' @param rho sampling probability (at present only)
+#' @param rho sampling probability (at present only): a single value for all
+#'   types, or a vector with one value per type
 #' @param ntips number of sampled tips
 #' @param min_tips minimum number of tips in the pruned tree
 #' @param collapse if TRUE, stores the standard structure (node-typed tree), otherwise keeps nodes with one descendant (branch-typed tree)
 #' @return the pruned treedata object, or `NULL` (with a message) if too few tips remain
 #' @keywords internal
 prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2, collapse = TRUE) {
-  if (is.na(rho) == is.na(ntips)) {
+  if (anyNA(rho) == is.na(ntips)) {
     stop("Please provide either the sampling probability or the desired number of tips in pruned tree.", call. = FALSE)
   }
 
@@ -29,7 +30,11 @@ prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2, collapse = TRUE)
 
   # prune unsampled particles
   tips <- obj@phylo$tip.label
-  if (!is.na(rho)) {
+  if (length(rho) > 1) {
+    # type-dependent sampling probability
+    tip_types <- obj@data$type[match(seq_along(tips), obj@data$node)]
+    sampled_tips <- tips[stats::runif(length(tips)) < rho[tip_types + 1]]
+  } else if (!is.na(rho)) {
     sampled_tips <- tips[sample(c(TRUE, FALSE), length(tips), prob = c(rho, 1 - rho), replace = TRUE)]
   } else {
     sampled_tips <- sample(tips, ntips)

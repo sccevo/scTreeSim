@@ -26,7 +26,8 @@ sim_adb_origin_samp(
 
 \item{d}{vector of death probabilities per type}
 
-\item{rho}{sampling probability}
+\item{rho}{sampling probability at present: a single value for all types,
+or a vector with one value per type (values of 0 allowed, but not all)}
 
 \item{origin_type}{one of 0,...,n-1 where n is the number of types}
 

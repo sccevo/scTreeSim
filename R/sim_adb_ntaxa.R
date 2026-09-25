@@ -1,3 +1,14 @@
+# NOTE (for later consideration): only a single rho is supported here.
+# Options for type-dependent sampling (rho per type) with exactly ntaxa sampled tips:
+# (a) mark each particle as sampled at birth with probability rho[type] (types do
+#     not change during a lifetime) and stop the simulation when ntaxa sampled
+#     particles are alive; exact analogue of the ntaxa stopping rule, but requires
+#     changes to the C++ loop (and changes the behaviour for a single rho)
+# (b) simulate until ceiling(ntaxa / min(rho)) particles are alive, then keep exactly
+#     ntaxa tips drawn with weights rho[type]; simple, but the type composition of
+#     the sample only approximately follows rho
+# (c) sample tips independently with probability rho[type] and re-simulate until
+#     exactly ntaxa tips are sampled; exact, but may need many attempts
 #' Simulator of a phylogeny from an Age-Dependent Branching process for a fixed number of sampled particles
 #' @param ntaxa number of sampled particles - tips in the phylogeny (at least 2)
 #' @param a vector of scale parameters per type

@@ -3,7 +3,8 @@
 #' @param a vector of scale parameters per type
 #' @param b vector of shape parameters per type
 #' @param d vector of death probabilities per type
-#' @param rho sampling probability
+#' @param rho sampling probability at present: a single value for all types,
+#'   or a vector with one value per type (values of 0 allowed, but not all)
 #' @param origin_type one of 0,...,n-1 where n is the number of types
 #' @param Xi_as matrix of asymmetric type transition probabilities
 #' @param Xi_s matrix of symmetric type transition probabilities
@@ -16,8 +17,10 @@
 sim_adb_origin_samp <- function(origin_time, a, b, d = 0, rho = 1, origin_type = 0,
                                 Xi_as = matrix(0), Xi_s = matrix(1), min_tips = 2, collapse = TRUE) {
   # the tree parameters are validated by sim_adb_origin_complete_fast
-  if (length(rho) != 1 || !is.numeric(rho) || is.na(rho) || rho <= 0 || rho > 1) {
-    stop("`rho` must be a single sampling probability in (0, 1].", call. = FALSE)
+  if (!is.numeric(rho) || !(length(rho) %in% c(1, length(a))) || anyNA(rho) ||
+      any(rho < 0 | rho > 1) || all(rho == 0)) {
+    stop("`rho` must be a single sampling probability in (0, 1], or one sampling probability ",
+         "in [0, 1] per type (", length(a), ", not all 0).", call. = FALSE)
   }
 
   # simulate full tree

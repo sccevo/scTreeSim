@@ -29,6 +29,20 @@ test_that("prune_tree samples tips with probability rho", {
   expect_pruned_tree(prune_tree(complete_tree, rho = 0.5), origin)
 })
 
+test_that("prune_tree samples tips with a type-dependent rho", {
+  withr::local_seed(3)
+  Xi_as <- matrix(c(0, 0, 0.3, 0), 2)
+  Xi_s <- matrix(c(0.7, 0, 0, 1), 2)
+  multitype_tree <- sim_adb_ntaxa_complete_fast(30, a = c(1, 1), b = c(1, 1), d = c(0.2, 0.2), Xi_as = Xi_as, Xi_s = Xi_s)
+  alive_type0 <- sum(multitype_tree@data$status == 1 & multitype_tree@data$type == 0)
+  tree <- prune_tree(multitype_tree, rho = c(1, 0))
+  tip_types <- tree@data$type[match(seq_along(tree@phylo$tip.label), tree@data$node)]
+
+  expect_true(all(tip_types == 0))
+  expect_length(tip_types, alive_type0)
+  expect_pruned_tree(tree, multitype_tree@phylo$origin)
+})
+
 test_that("prune_tree keeps nodes with a single descendant if collapse = FALSE", {
   withr::local_seed(1)
   tree <- prune_tree(complete_tree, rho = 1, collapse = FALSE)

@@ -9,7 +9,8 @@ prune_tree(obj, rho = NA, ntips = NA, min_tips = 2, collapse = TRUE)
 \arguments{
 \item{obj}{treedata object}
 
-\item{rho}{sampling probability (at present only)}
+\item{rho}{sampling probability (at present only): a single value for all
+types, or a vector with one value per type}
 
 \item{ntips}{number of sampled tips}
 
