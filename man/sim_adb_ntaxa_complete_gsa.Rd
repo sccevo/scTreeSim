@@ -4,7 +4,15 @@
 \alias{sim_adb_ntaxa_complete_gsa}
 \title{Simulator of complete tree under ADB process with GSA}
 \usage{
-sim_adb_ntaxa_complete_gsa(ntaxa, a, b, d, m = 2 * ntaxa, nsim = 10)
+sim_adb_ntaxa_complete_gsa(
+  ntaxa,
+  a,
+  b,
+  d,
+  m = 2 * ntaxa,
+  nsim = 10,
+  max_attempts = 100
+)
 }
 \arguments{
 \item{ntaxa}{number of sampled particles (at least 2)}
@@ -18,6 +26,9 @@ sim_adb_ntaxa_complete_gsa(ntaxa, a, b, d, m = 2 * ntaxa, nsim = 10)
 \item{m}{number of standing taxa that will exist on the first generated trees, then be cut; m >> ntaxa}
 
 \item{nsim}{number of trees to be generated, cut, and sampled from}
+
+\item{max_attempts}{maximum number of simulation attempts per tree before
+giving up (attempts fail when all particles die)}
 }
 \description{
 Simulator of complete tree under ADB process with GSA

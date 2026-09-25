@@ -10,7 +10,15 @@ std::pair<int,int> sample_child_types_ntaxa(int parent_type,
                                       const NumericMatrix& Xi_as,
                                       const NumericMatrix& Xi_s,
                                       int ntype) {
-  double r = R::runif(0, 1);
+  // total probability of the row, accumulated in the same order as the loop
+  // below, so that the scaled draw r always falls below the final cum_prob:
+  // outcomes are only ever chosen within the support (no fallback needed)
+  double total = 0.0;
+  for (int i = 0; i < ntype; i++) {
+    total += Xi_s(parent_type, i);
+    total += Xi_as(parent_type, i);
+  }
+  double r = R::runif(0, 1) * total;
   double cum_prob = 0.0;
 
   for (int i = 0; i < ntype; i++) {
@@ -29,8 +37,9 @@ std::pair<int,int> sample_child_types_ntaxa(int parent_type,
       }
     }
   }
-  // fallback (should not reach here if matrices sum to 1)
-  return {parent_type, parent_type};
+  // unreachable: r < total and the last positive-probability outcome brings
+  // cum_prob to exactly total
+  Rcpp::stop("Failed to sample child types; check the transition matrices.");
 }
 
 

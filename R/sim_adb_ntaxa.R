@@ -10,17 +10,13 @@
 #' @export
 sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), collapse = TRUE) {
   # assert that all inputs are correct
-  ntypes = length(a)
-  assertthat::assert_that(all(c(length(b) == ntypes, length(d) == ntypes,
-                                dim(Xi_as) == c(ntypes, ntypes), dim(Xi_s) == c(ntypes, ntypes),
-                                origin_type %in% c(0:ntypes),
-                                d >= 0, d < 1, rho > 0, rho <= 1)),
-              msg = 'The inputs do not have proper dimensions or values. Please check all parameters!')
-  assertthat::assert_that(all(sapply(seq(1, ntypes), function(i) {all.equal(sum(Xi_as[i, ]) + sum(Xi_s[i, ]), 1)})),
-              msg = 'The transition probabilities do not some to 1. Please check!')
+  if (length(rho) != 1 || !is.numeric(rho) || rho <= 0 || rho > 1) {
+    stop("`rho` must be a single sampling probability in (0, 1].", call. = FALSE)
+  }
+  # (the tree parameters are validated by sim_adb_ntaxa_complete_fast)
 
-  # estimate the number of taxa in the full tree
-  nfull = ntaxa / rho
+  # estimate the number of taxa in the full tree (the C++ loop takes an integer)
+  nfull = ceiling(ntaxa / rho)
 
   # simulate full tree
   tree = sim_adb_ntaxa_complete_fast(ntaxa = nfull, a = a, b = b, d = d, origin_type = origin_type, Xi_as = Xi_as, Xi_s = Xi_s)
@@ -32,6 +28,7 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
 
   return(phylogeny)
 }
+
 
 #' Simulator of the complete Age-Dependent Branching Process (up to a fixed number of living particles)
 #' @param ntaxa number of sampled particles (at least 2)
@@ -47,7 +44,8 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0, Xi_
 #' @importFrom magrittr "%>%"
 #' @importFrom stats rgamma runif
 sim_adb_ntaxa_complete_fast <- function(ntaxa, a, b, d, origin_type = 0,
-                                        Xi_as = matrix(0), Xi_s = matrix(0)) {
+                                        Xi_as = matrix(0), Xi_s = matrix(1)) {
+  .check_adb_params(a, b, d, origin_type, Xi_as, Xi_s)
   raw <- sim_adb_loop_cpp(ntaxa, a, b, d, Xi_as, Xi_s, origin_type)
 
   nodes <- as.data.frame(raw[c("id","height","type","parent","leftchild","rightchild","status")])
@@ -111,10 +109,12 @@ sim_adb_ntaxa_complete_fast <- function(ntaxa, a, b, d, origin_type = 0,
 #' @param origin_type one of 0,...,n-1 where n is the number of types
 #' @param Xi_as matrix of asymmetric type transition probabilities
 #' @param Xi_s matrix of symmetric type transition probabilities
-#' @export
+#' R loop (slower than Rcpp)
+#' @noRd
 #' @importFrom magrittr "%>%"
 #' @importFrom stats rgamma runif
-sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(0)) {
+sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1)) {
+  .check_adb_params(a, b, d, origin_type, Xi_as, Xi_s)
 
   # initialize
   edges = matrix(nrow = 0, ncol = 2)

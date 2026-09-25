@@ -11,7 +11,7 @@ sim_adb_ntaxa_complete_fast(
   d,
   origin_type = 0,
   Xi_as = matrix(0),
-  Xi_s = matrix(0)
+  Xi_s = matrix(1)
 )
 }
 \arguments{

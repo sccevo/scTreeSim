@@ -11,14 +11,10 @@
 #' @export
 sim_adb_origin_samp <- function(origin_time, a, b, d = 0, rho = 1, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), min_tips = 2, collapse = TRUE) {
   # assert that all inputs are correct
-  ntypes = length(a)
-  assertthat::assert_that(all(c(length(b) == ntypes, length(d) == ntypes,
-                                dim(Xi_as) == c(ntypes, ntypes), dim(Xi_s) == c(ntypes, ntypes),
-                                origin_time > 0, origin_type %in% c(0:(ntypes-1)),
-                                d >= 0, d < 1, rho > 0, rho <= 1)),
-              msg = 'The inputs do not have proper dimensions or values. Please check all parameters!')
-  assertthat::assert_that(all(sapply(seq(1, ntypes), function(i) {all.equal(sum(Xi_as[i, ]) + sum(Xi_s[i, ]), 1.)})),
-              msg = 'The transition probabilities do not some to 1. Please check!')
+  # (the tree parameters are validated by sim_adb_origin_complete_fast)
+  if (length(rho) != 1 || !is.numeric(rho) || rho <= 0 || rho > 1) {
+    stop("`rho` must be a single sampling probability in (0, 1].", call. = FALSE)
+  }
 
   # simulate full tree
   tree = sim_adb_origin_complete_fast(origin_time = origin_time, a = a, b = b, d = d, origin_type = origin_type, Xi_as = Xi_as, Xi_s = Xi_s, min_tips = min_tips)
@@ -41,8 +37,10 @@ sim_adb_origin_samp <- function(origin_time, a, b, d = 0, rho = 1, origin_type =
 #' @param Xi_as matrix of asymmetric type transition probabilities
 #' @param Xi_s matrix of symmetric type transition probabilities
 #' @param min_tips minimum number of tips in the tree
-#' @export
+#' R loop (slower than Rcpp)
+#' @noRd
 sim_adb_origin_complete <- function(origin_time, a, b, d, origin_type = 0, Xi_as = matrix(0), Xi_s = matrix(1), min_tips = 2) {
+  .check_adb_params(a, b, d, origin_type, Xi_as, Xi_s)
 
   # initialize
   edges = matrix(nrow = 0, ncol = 2)
@@ -59,9 +57,13 @@ sim_adb_origin_complete <- function(origin_time, a, b, d, origin_type = 0, Xi_as
 
   # sample the lifetime of the first particle
   root_edge = rgamma(1, shape = b[origin_type + 1], scale = a[origin_type + 1])
+  # censor the root lifetime: if it outlives the origin interval, the root is
+  # a single tip alive at present and is not processed as an event
+  root_censored = root_edge > origin_time
+  if (root_censored) root_edge = origin_time
   nodes = dplyr::bind_rows(nodes, c(id = 1, height = origin_time - root_edge, type = origin_type,
                              parent = NA, leftchild = NA, rightchild = NA, status = 1))
-  events = nodes
+  events = if (root_censored) nodes[0, ] else nodes
   event_counter = 1
 
   while (nrow(events) > 0) {
@@ -176,6 +178,7 @@ sim_adb_origin_complete_fast <- function(origin_time, a, b, d,
                                          origin_type = 0,
                                          Xi_as = matrix(0), Xi_s = matrix(1),
                                          min_tips = 2) {
+  .check_adb_params(a, b, d, origin_type, Xi_as, Xi_s)
 
   raw <- sim_adb_origin_loop_cpp(origin_time, a, b, d, Xi_as, Xi_s,
                                  origin_type)

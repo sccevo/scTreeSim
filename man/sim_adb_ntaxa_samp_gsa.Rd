@@ -11,7 +11,8 @@ sim_adb_ntaxa_samp_gsa(
   d,
   rho,
   m = floor(2 * ntaxa/rho),
-  nsim = 10
+  nsim = 10,
+  max_attempts = 100
 )
 }
 \arguments{
@@ -28,6 +29,9 @@ sim_adb_ntaxa_samp_gsa(
 \item{m}{number of standing taxa that will exist on the first generated trees (before sampling), then be cut; m >> ntaxa/rho}
 
 \item{nsim}{number of trees to be generated, cut, and sampled from}
+
+\item{max_attempts}{maximum number of simulation attempts per tree before
+giving up (attempts fail when all particles die)}
 }
 \description{
 Wrapper for general sampling approach (GSA) for tree simulation with n taxa

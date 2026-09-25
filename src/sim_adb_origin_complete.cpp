@@ -9,7 +9,15 @@ std::pair<int,int> sample_child_types(int parent_type,
                                       const NumericMatrix& Xi_as,
                                       const NumericMatrix& Xi_s,
                                       int ntype) {
-  double r = R::runif(0, 1);
+  // total probability of the row, accumulated in the same order as the loop
+  // below, so that the scaled draw r always falls below the final cum_prob:
+  // outcomes are only ever chosen within the support (no fallback needed)
+  double total = 0.0;
+  for (int i = 0; i < ntype; i++) {
+    total += Xi_s(parent_type, i);
+    total += Xi_as(parent_type, i);
+  }
+  double r = R::runif(0, 1) * total;
   double cum_prob = 0.0;
   
   for (int i = 0; i < ntype; i++) {
@@ -28,8 +36,9 @@ std::pair<int,int> sample_child_types(int parent_type,
       }
     }
   }
-  // fallback (should not reach here if matrices sum to 1)
-  return {parent_type, parent_type};
+  // unreachable: r < total and the last positive-probability outcome brings
+  // cum_prob to exactly total
+  Rcpp::stop("Failed to sample child types; check the transition matrices.");
 }
 
 // [[Rcpp::export]]
@@ -57,17 +66,24 @@ List sim_adb_origin_loop_cpp(double origin_time,
   // drawing root note parameters
   double root_lifetime = R::rgamma(b[origin_type], a[origin_type]);
   double root_height   = origin_time - root_lifetime;
-  
+  // censor the root like any other particle: if it outlives the origin
+  // interval it is a single tip alive at present and never divides
+  bool   root_censored = root_height < 0;
+  if (root_censored) {
+    root_lifetime = origin_time;
+    root_height = 0.0;
+  }
+
   v_id[0]=1; v_type[0]=origin_type; v_height[0]=root_height;
   v_parent[0]=NA_INTEGER; v_left[0]=NA_INTEGER; v_right[0]=NA_INTEGER;
   v_status[0]=1;
-  
+
   int event_counter = 1;
   int n_nodes = 1;
-  
+
   // event stack: store indices into v_ arrays (0-based)
   std::vector<int> event_stack;
-  event_stack.push_back(0);
+  if (!root_censored) event_stack.push_back(0);
   
   while (!event_stack.empty()) {
     int idx = event_stack.back();
