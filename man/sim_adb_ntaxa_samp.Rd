@@ -6,35 +6,39 @@
 \usage{
 sim_adb_ntaxa_samp(
   ntaxa,
-  a,
-  b,
-  d = 0,
-  rho = 1,
+  scale = NULL,
+  shape,
+  death_prob = 0,
+  sampling_prob = 1,
   origin_type = 0,
-  Xi_as = matrix(0),
-  Xi_s = matrix(1),
-  collapse = TRUE
+  asym_trans_prob = matrix(0),
+  sym_trans_prob = matrix(1),
+  collapse = TRUE,
+  mean_lifetime = NULL
 )
 }
 \arguments{
 \item{ntaxa}{number of sampled particles - tips in the phylogeny (at least 2)}
 
-\item{a}{vector of scale parameters per type}
+\item{scale}{vector of scale parameters per type (alternatively, give \code{mean_lifetime})}
 
-\item{b}{vector of shape parameters per type}
+\item{shape}{vector of shape parameters per type}
 
-\item{d}{vector of death probabilities per type}
+\item{death_prob}{vector of death probabilities per type}
 
-\item{rho}{sampling probability}
+\item{sampling_prob}{sampling probability}
 
 \item{origin_type}{one of 0,...,n-1 where n is the number of types}
 
-\item{Xi_as}{matrix of asymmetric type transition probabilities}
+\item{asym_trans_prob}{matrix of asymmetric type transition probabilities}
 
-\item{Xi_s}{matrix of symmetric type transition probabilities}
+\item{sym_trans_prob}{matrix of symmetric type transition probabilities}
 
 \item{collapse}{if TRUE, nodes with a single descendant after pruning are
 removed (node-typed tree), otherwise they are kept (branch-typed tree)}
+
+\item{mean_lifetime}{vector of mean lifetimes per type (= scale * shape),
+alternative to \code{scale}}
 }
 \value{
 a treedata object with \code{ntaxa} tips, or \code{NULL} (with a message)

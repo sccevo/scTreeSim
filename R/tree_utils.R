@@ -1,17 +1,17 @@
 #' Prune tree
 #'
 #' Removes dead particles and then samples tips at present, either with
-#' probability `rho` each or as a fixed number `ntips`.
+#' probability `sampling_prob` each or as a fixed number `ntips`.
 #' @param obj treedata object
-#' @param rho sampling probability (at present only): a single value for all
+#' @param sampling_prob sampling probability (at present only): a single value for all
 #'   types, or a vector with one value per type
 #' @param ntips number of sampled tips
-#' @param min_tips minimum number of tips in the pruned tree
+#' @param min_taxa minimum number of tips in the pruned tree
 #' @param collapse if TRUE, stores the standard structure (node-typed tree), otherwise keeps nodes with one descendant (branch-typed tree)
 #' @return the pruned treedata object, or `NULL` (with a message) if too few tips remain
 #' @keywords internal
-prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2, collapse = TRUE) {
-  if (anyNA(rho) == is.na(ntips)) {
+prune_tree <- function(obj, sampling_prob = NA, ntips = NA, min_taxa = 2, collapse = TRUE) {
+  if (anyNA(sampling_prob) == is.na(ntips)) {
     stop("Please provide either the sampling probability or the desired number of tips in pruned tree.", call. = FALSE)
   }
 
@@ -30,17 +30,18 @@ prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2, collapse = TRUE)
 
   # prune unsampled particles
   tips <- obj@phylo$tip.label
-  if (length(rho) > 1) {
+  if (length(sampling_prob) > 1) {
     # type-dependent sampling probability
     tip_types <- obj@data$type[match(seq_along(tips), obj@data$node)]
-    sampled_tips <- tips[stats::runif(length(tips)) < rho[tip_types + 1]]
-  } else if (!is.na(rho)) {
-    sampled_tips <- tips[sample(c(TRUE, FALSE), length(tips), prob = c(rho, 1 - rho), replace = TRUE)]
+    sampled_tips <- tips[stats::runif(length(tips)) < sampling_prob[tip_types + 1]]
+  } else if (!is.na(sampling_prob)) {
+    sampled_tips <- tips[sample(c(TRUE, FALSE), length(tips), prob = c(sampling_prob, 1 - sampling_prob),
+                                replace = TRUE)]
   } else {
     sampled_tips <- sample(tips, ntips)
   }
 
-  if (length(sampled_tips) < min_tips) {
+  if (length(sampled_tips) < min_taxa) {
     message("Not enough tips sampled! Try another seed.")
     return(NULL)
   }
@@ -104,42 +105,71 @@ prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2, collapse = TRUE)
 }
 
 
+#' Resolve the scale of the gamma lifetime distribution
+#'
+#' Lifetimes can be specified either by `scale` or by `mean_lifetime`
+#' (= `scale * shape`), but not both.
+#' @param scale vector of scale parameters per type, or `NULL`
+#' @param shape vector of shape parameters per type
+#' @param mean_lifetime vector of mean lifetimes per type, or `NULL`
+#' @return the vector of scale parameters per type
+#' @noRd
+.resolve_scale <- function(scale, shape, mean_lifetime) {
+  if (is.null(scale) == is.null(mean_lifetime)) {
+    stop("Please provide either `scale` or `mean_lifetime` (= scale * shape), not both.", call. = FALSE)
+  }
+  if (is.null(scale)) {
+    if (!is.numeric(mean_lifetime) || length(mean_lifetime) != length(shape) ||
+        anyNA(mean_lifetime) || any(mean_lifetime <= 0)) {
+      stop("`mean_lifetime` must be a numeric vector of positive mean lifetimes with one entry per type (",
+           length(shape), ").", call. = FALSE)
+    }
+    scale <- mean_lifetime / shape
+  }
+  scale
+}
+
+
 #' Validate the parameters of the Age-Dependent Branching process
 #'
 #' Called by every tree simulator before any sampling, so that invalid
 #' indices never reach the C++ code.
-#' @param a vector of scale parameters per type
-#' @param b vector of shape parameters per type
-#' @param d vector of death probabilities per type
+#' @param scale vector of scale parameters per type
+#' @param shape vector of shape parameters per type
+#' @param death_prob vector of death probabilities per type
 #' @param origin_type one of 0,...,n-1 where n is the number of types
-#' @param Xi_as matrix of asymmetric type transition probabilities
-#' @param Xi_s matrix of symmetric type transition probabilities
+#' @param asym_trans_prob matrix of asymmetric type transition probabilities
+#' @param sym_trans_prob matrix of symmetric type transition probabilities
 #' @return `NULL`, invisibly; throws an error if any parameter is invalid
 #' @noRd
-.check_adb_params <- function(a, b, d, origin_type, Xi_as, Xi_s) {
-  ntypes <- length(a)
-  if (ntypes < 1 || !is.numeric(a) || anyNA(a) || any(a <= 0)) {
-    stop("`a` must be a non-empty numeric vector of positive scale parameters.", call. = FALSE)
+.check_adb_params <- function(scale, shape, death_prob, origin_type, asym_trans_prob, sym_trans_prob) {
+  ntypes <- length(scale)
+  if (ntypes < 1 || !is.numeric(scale) || anyNA(scale) || any(scale <= 0)) {
+    stop("`scale` must be a non-empty numeric vector of positive scale parameters.", call. = FALSE)
   }
-  if (length(b) != ntypes || !is.numeric(b) || anyNA(b) || any(b <= 0)) {
-    stop("`b` must be a numeric vector of positive shape parameters with one entry per type (", ntypes, ").", call. = FALSE)
+  if (length(shape) != ntypes || !is.numeric(shape) || anyNA(shape) || any(shape <= 0)) {
+    stop("`shape` must be a numeric vector of positive shape parameters with one entry per type (",
+         ntypes, ").", call. = FALSE)
   }
-  if (length(d) != ntypes || !is.numeric(d) || anyNA(d) || any(d < 0 | d >= 1)) {
-    stop("`d` must be a numeric vector of death probabilities in [0, 1) with one entry per type (", ntypes, ").", call. = FALSE)
+  if (length(death_prob) != ntypes || !is.numeric(death_prob) || anyNA(death_prob) ||
+      any(death_prob < 0 | death_prob >= 1)) {
+    stop("`death_prob` must be a numeric vector of death probabilities in [0, 1) with one entry per type (",
+         ntypes, ").", call. = FALSE)
   }
   if (length(origin_type) != 1 || !(origin_type %in% (seq_len(ntypes) - 1L))) {
     stop("`origin_type` must be a single value in 0, ..., ", ntypes - 1, ".", call. = FALSE)
   }
-  if (!is.matrix(Xi_as) || !is.matrix(Xi_s) ||
-      !identical(dim(Xi_as), c(ntypes, ntypes)) || !identical(dim(Xi_s), c(ntypes, ntypes))) {
-    stop("`Xi_as` and `Xi_s` must both be ", ntypes, " x ", ntypes, " matrices.", call. = FALSE)
+  if (!is.matrix(asym_trans_prob) || !is.matrix(sym_trans_prob) ||
+      !identical(dim(asym_trans_prob), c(ntypes, ntypes)) || !identical(dim(sym_trans_prob), c(ntypes, ntypes))) {
+    stop("`asym_trans_prob` and `sym_trans_prob` must both be ", ntypes, " x ", ntypes, " matrices.", call. = FALSE)
   }
-  if (anyNA(Xi_as) || anyNA(Xi_s) || any(Xi_as < 0) || any(Xi_s < 0)) {
-    stop("`Xi_as` and `Xi_s` must not contain missing or negative probabilities.", call. = FALSE)
+  if (anyNA(asym_trans_prob) || anyNA(sym_trans_prob) || any(asym_trans_prob < 0) || any(sym_trans_prob < 0)) {
+    stop("`asym_trans_prob` and `sym_trans_prob` must not contain missing or negative probabilities.", call. = FALSE)
   }
-  row_sums <- rowSums(Xi_as) + rowSums(Xi_s)
+  row_sums <- rowSums(asym_trans_prob) + rowSums(sym_trans_prob)
   if (!isTRUE(all.equal(row_sums, rep(1, ntypes), check.attributes = FALSE))) {
-    stop("The transition probabilities in each row of `Xi_as` + `Xi_s` must sum to 1.", call. = FALSE)
+    stop("The transition probabilities in each row of `asym_trans_prob` + `sym_trans_prob` must sum to 1.",
+         call. = FALSE)
   }
   invisible(NULL)
 }
@@ -147,14 +177,14 @@ prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2, collapse = TRUE)
 
 #' Helper function for sampling types of offspring upon division
 #' @param parent_type ID of parent type
-#' @param Xi_as matrix of asymmetric type transition probabilities
-#' @param Xi_s matrix of symmetric type transition probabilities
+#' @param asym_trans_prob matrix of asymmetric type transition probabilities
+#' @param sym_trans_prob matrix of symmetric type transition probabilities
 #' @return integer vector of length 2 with the types of the two children
 #' @keywords internal
 #' @noRd
-sample_types <- function(parent_type, Xi_as, Xi_s) {
+sample_types <- function(parent_type, asym_trans_prob, sym_trans_prob) {
   # mirrors sample_child_types in the C++ code
-  ntypes <- ncol(Xi_s)
+  ntypes <- ncol(sym_trans_prob)
   row <- parent_type + 1
 
   # total probability of the row, accumulated in the same order as the loop
@@ -163,20 +193,20 @@ sample_types <- function(parent_type, Xi_as, Xi_s) {
   # even in case of rounding errors when summing probabilities)
   total <- 0
   for (i in seq_len(ntypes)) {
-    total <- total + Xi_s[row, i]
-    total <- total + Xi_as[row, i]
+    total <- total + sym_trans_prob[row, i]
+    total <- total + asym_trans_prob[row, i]
   }
   r <- runif(1) * total
   
   cum_prob <- 0
   for (i in seq(0, ntypes - 1)) {
     # symmetric: both children type i
-    cum_prob <- cum_prob + Xi_s[row, i + 1]
+    cum_prob <- cum_prob + sym_trans_prob[row, i + 1]
     if (r < cum_prob) {
       return(c(i, i))
     }
     # asymmetric: one child stays parent_type, other becomes type i
-    cum_prob <- cum_prob + Xi_as[row, i + 1]
+    cum_prob <- cum_prob + asym_trans_prob[row, i + 1]
     if (r < cum_prob) {
       if (runif(1) < 0.5) {
         return(c(parent_type, i))

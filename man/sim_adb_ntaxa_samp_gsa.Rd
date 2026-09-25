@@ -6,32 +6,35 @@
 \usage{
 sim_adb_ntaxa_samp_gsa(
   ntaxa,
-  a,
-  b,
-  d,
-  rho,
-  m = floor(2 * ntaxa/rho),
+  scale = NULL,
+  shape,
+  death_prob,
+  sampling_prob,
+  m = floor(2 * ntaxa/sampling_prob),
   nsim = 10,
-  max_attempts = 100
+  max_attempts = 100,
+  mean_lifetime = NULL
 )
 }
 \arguments{
 \item{ntaxa}{number of sampled particles (at least 2)}
 
-\item{a}{scale parameter}
+\item{scale}{scale parameter (alternatively, give \code{mean_lifetime})}
 
-\item{b}{shape parameter}
+\item{shape}{shape parameter}
 
-\item{d}{death probability}
+\item{death_prob}{death probability}
 
-\item{rho}{sampling probability}
+\item{sampling_prob}{sampling probability}
 
-\item{m}{number of standing taxa that will exist on the first generated trees (before sampling), then be cut; m >> ntaxa/rho}
+\item{m}{number of standing taxa that will exist on the first generated trees (before sampling), then be cut; m >> ntaxa/sampling_prob}
 
 \item{nsim}{number of trees to be generated, cut, and sampled from}
 
 \item{max_attempts}{maximum number of simulation attempts per tree before
 giving up (attempts fail when all particles die)}
+
+\item{mean_lifetime}{mean lifetime (= scale * shape), alternative to \code{scale}}
 }
 \value{
 a phylo object with \code{ntaxa} tips

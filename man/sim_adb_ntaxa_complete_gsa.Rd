@@ -6,22 +6,23 @@
 \usage{
 sim_adb_ntaxa_complete_gsa(
   ntaxa,
-  a,
-  b,
-  d,
+  scale = NULL,
+  shape,
+  death_prob,
   m = 2 * ntaxa,
   nsim = 10,
-  max_attempts = 100
+  max_attempts = 100,
+  mean_lifetime = NULL
 )
 }
 \arguments{
 \item{ntaxa}{number of sampled particles (at least 2)}
 
-\item{a}{scale parameter}
+\item{scale}{scale parameter (alternatively, give \code{mean_lifetime})}
 
-\item{b}{shape parameter}
+\item{shape}{shape parameter}
 
-\item{d}{death probability}
+\item{death_prob}{death probability}
 
 \item{m}{number of standing taxa that will exist on the first generated trees, then be cut; m >> ntaxa}
 
@@ -29,6 +30,8 @@ sim_adb_ntaxa_complete_gsa(
 
 \item{max_attempts}{maximum number of simulation attempts per tree before
 giving up (attempts fail when all particles die)}
+
+\item{mean_lifetime}{mean lifetime (= scale * shape), alternative to \code{scale}}
 }
 \value{
 a phylo object with \code{ntaxa} extant tips, including extinct lineages

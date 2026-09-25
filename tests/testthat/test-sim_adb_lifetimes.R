@@ -2,7 +2,7 @@
 # and the root edge) follow the per-type gamma lifetime distribution.
 # See helper-lifetimes.R for why a censoring-aware (log-rank) test is used.
 #
-# Origin simulator: d = 0 and min_tips = 1, so no tree is discarded. Discarding
+# Origin simulator: death_prob = 0 and min_taxa = 1, so no tree is discarded. Discarding
 # trees without enough alive tips would condition on survival, which depends
 # on the lifetimes and would bias the test.
 # Ntaxa simulator: d > 0 is fine; whether ntaxa particles are reached depends
@@ -16,7 +16,7 @@ Xi_s <- matrix(c(1 - r, 0, 0, 1), 2)
 
 test_that("origin simulator: lifetimes follow the lifetime distribution (single type)", {
   withr::local_seed(1)
-  trees <- simulate_trees(150, function() sim_adb_origin_complete_fast(5, a = a[1], b = b[1], d = 0, min_tips = 1))
+  trees <- simulate_trees(150, function() sim_adb_origin_complete_fast(5, scale = a[1], shape = b[1], death_prob = 0, min_taxa = 1))
   lifetimes <- do.call(rbind, lapply(trees, lifetime_data, censor_alive_at = "tip"))
 
   expect_gt(sum(lifetimes$event), 5000)
@@ -28,7 +28,7 @@ test_that("origin simulator: lifetimes follow the lifetime distribution (single 
 test_that("origin simulator: lifetimes follow the per-type lifetime distributions (multi-type)", {
   withr::local_seed(2)
   trees <- simulate_trees(150, function() {
-    sim_adb_origin_complete_fast(5, a = a, b = b, d = c(0, 0), Xi_as = Xi_as, Xi_s = Xi_s, min_tips = 1)
+    sim_adb_origin_complete_fast(5, scale = a, shape = b, death_prob = c(0, 0), asym_trans_prob = Xi_as, sym_trans_prob = Xi_s, min_taxa = 1)
   })
   lifetimes <- do.call(rbind, lapply(trees, lifetime_data, censor_alive_at = "tip"))
 
@@ -40,7 +40,7 @@ test_that("origin simulator: lifetimes follow the per-type lifetime distribution
 
 test_that("ntaxa simulator: lifetimes follow the lifetime distribution (single type)", {
   withr::local_seed(4)
-  trees <- simulate_trees(150, function() sim_adb_ntaxa_complete_fast(50, a = a[1], b = b[1], d = 0.1))
+  trees <- simulate_trees(150, function() sim_adb_ntaxa_complete_fast(50, scale = a[1], shape = b[1], death_prob = 0.1))
   lifetimes <- do.call(rbind, lapply(trees, lifetime_data, censor_alive_at = "last_division"))
 
   expect_gt(sum(lifetimes$event), 5000)
@@ -51,7 +51,7 @@ test_that("ntaxa simulator: lifetimes follow the lifetime distribution (single t
 test_that("ntaxa simulator: lifetimes follow the per-type lifetime distributions (multi-type)", {
   withr::local_seed(5)
   trees <- simulate_trees(150, function() {
-    sim_adb_ntaxa_complete_fast(50, a = a, b = b, d = c(0.1, 0.1), Xi_as = Xi_as, Xi_s = Xi_s)
+    sim_adb_ntaxa_complete_fast(50, scale = a, shape = b, death_prob = c(0.1, 0.1), asym_trans_prob = Xi_as, sym_trans_prob = Xi_s)
   })
   lifetimes <- do.call(rbind, lapply(trees, lifetime_data, censor_alive_at = "last_division"))
 
@@ -64,7 +64,7 @@ test_that("ntaxa simulator: the root edge is a complete lifetime", {
   # the root always divides when ntaxa >= 2, and reaching ntaxa does not depend
   # on the root's lifetime, so root edges are a plain sample of lifetimes
   withr::local_seed(6)
-  trees <- simulate_trees(300, function() sim_adb_ntaxa_complete_fast(10, a = a[1], b = b[1], d = 0.1))
+  trees <- simulate_trees(300, function() sim_adb_ntaxa_complete_fast(10, scale = a[1], shape = b[1], death_prob = 0.1))
   root_edges <- vapply(trees, function(tree) tree@phylo$root.edge, numeric(1))
 
   expect_gt(stats::ks.test(root_edges, "pgamma", shape = b[1], scale = a[1])$p.value, 0.001)

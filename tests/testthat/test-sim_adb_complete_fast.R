@@ -17,7 +17,7 @@ expect_complete_tree <- function(tree, origin) {
 
 test_that("sim_adb_ntaxa_complete_fast returns a complete tree with ntaxa alive tips", {
   withr::local_seed(1)
-  tree <- sim_adb_ntaxa_complete_fast(20, a = 1, b = 1, d = 0.2)
+  tree <- sim_adb_ntaxa_complete_fast(20, scale = 1, shape = 1, death_prob = 0.2)
 
   expect_complete_tree(tree, origin = tree@phylo$origin)
   expect_equal(sum(tree@data$status == 1), 20)
@@ -26,7 +26,7 @@ test_that("sim_adb_ntaxa_complete_fast returns a complete tree with ntaxa alive 
 
 test_that("sim_adb_origin_complete_fast returns a complete tree ending at origin_time", {
   withr::local_seed(1)
-  tree <- sim_adb_origin_complete_fast(5, a = 1, b = 1, d = 0.2)
+  tree <- sim_adb_origin_complete_fast(5, scale = 1, shape = 1, death_prob = 0.2)
 
   expect_complete_tree(tree, origin = 5)
   expect_equal(tree@phylo$origin, 5)
@@ -36,20 +36,33 @@ test_that("sim_adb_origin_complete_fast returns a complete tree ending at origin
 test_that("large trees are complete trees (storage is resized in the C++ loops)", {
   withr::local_seed(1)
   # ntaxa: initial capacity 4 * ntaxa + 10 nodes, exceeded when many particles die
-  tree <- simulate_trees(10, function() sim_adb_ntaxa_complete_fast(50, a = 1, b = 1, d = 0.35))[[1]]
+  tree <- simulate_trees(10, function() sim_adb_ntaxa_complete_fast(50, scale = 1, shape = 1, death_prob = 0.35))[[1]]
   expect_gt(nrow(tree@data), 4 * 50 + 10)
   expect_complete_tree(tree, origin = tree@phylo$origin)
 
   # origin: initial capacity 1024 nodes
-  tree <- sim_adb_origin_complete_fast(10, a = 1, b = 1, d = 0)
+  tree <- sim_adb_origin_complete_fast(10, scale = 1, shape = 1, death_prob = 0)
   expect_gt(nrow(tree@data), 1024)
   expect_complete_tree(tree, origin = 10)
 })
 
 test_that("failed simulations return NULL with a message", {
   withr::local_seed(1)
-  expect_message(expect_null(sim_adb_ntaxa_complete_fast(20, a = 1, b = 1, d = 0.9)), "Too many particles died")
-  expect_message(expect_null(sim_adb_origin_complete_fast(5, a = 1, b = 1, d = 0, min_tips = 1e6)), "too few tips")
+  expect_message(expect_null(sim_adb_ntaxa_complete_fast(20, scale = 1, shape = 1, death_prob = 0.9)), "Too many particles died")
+  expect_message(expect_null(sim_adb_origin_complete_fast(5, scale = 1, shape = 1, death_prob = 0, min_taxa = 1e6)), "too few tips")
   # the root outlives the origin interval: a single alive tip, never divides
-  expect_message(expect_null(sim_adb_origin_complete_fast(1, a = 1000, b = 1, d = 0)), "too few tips")
+  expect_message(expect_null(sim_adb_origin_complete_fast(1, scale = 1000, shape = 1, death_prob = 0)), "too few tips")
+})
+
+test_that("lifetimes can be given by mean_lifetime instead of scale", {
+  asym_trans_prob <- matrix(c(0, 0, 0.3, 0), 2)
+  sym_trans_prob <- matrix(c(0.7, 0, 0, 1), 2)
+  simulate <- function(...) {
+    withr::with_seed(1, sim_adb_origin_complete_fast(4, shape = c(2, 1), death_prob = c(0, 0), ...,
+                                                     asym_trans_prob = asym_trans_prob, sym_trans_prob = sym_trans_prob))
+  }
+
+  expect_identical(simulate(mean_lifetime = c(1, 2)), simulate(scale = c(0.5, 2)))
+  expect_error(simulate(), "either `scale` or `mean_lifetime`")
+  expect_error(simulate(scale = c(0.5, 2), mean_lifetime = c(1, 2)), "either `scale` or `mean_lifetime`")
 })

@@ -7,36 +7,40 @@ for a fixed time interval (since origin)}
 \usage{
 sim_adb_origin_complete_fast(
   origin_time,
-  a,
-  b,
-  d,
+  scale = NULL,
+  shape,
+  death_prob,
   origin_type = 0,
-  Xi_as = matrix(0),
-  Xi_s = matrix(1),
-  min_tips = 2
+  asym_trans_prob = matrix(0),
+  sym_trans_prob = matrix(1),
+  min_taxa = 2,
+  mean_lifetime = NULL
 )
 }
 \arguments{
 \item{origin_time}{time of birth of the initial particle}
 
-\item{a}{vector of scale parameters per type}
+\item{scale}{vector of scale parameters per type (alternatively, give \code{mean_lifetime})}
 
-\item{b}{vector of shape parameters per type}
+\item{shape}{vector of shape parameters per type}
 
-\item{d}{vector of death probabilities per type}
+\item{death_prob}{vector of death probabilities per type}
 
 \item{origin_type}{one of 0,...,n-1 where n is the number of types}
 
-\item{Xi_as}{matrix of asymmetric type transition probabilities}
+\item{asym_trans_prob}{matrix of asymmetric type transition probabilities}
 
-\item{Xi_s}{matrix of symmetric type transition probabilities}
+\item{sym_trans_prob}{matrix of symmetric type transition probabilities}
 
-\item{min_tips}{minimum number of tips in the tree}
+\item{min_taxa}{minimum number of tips in the tree}
+
+\item{mean_lifetime}{vector of mean lifetimes per type (= scale * shape),
+alternative to \code{scale}}
 }
 \value{
 a treedata object including dead particles, with \verb{@data} columns
 \code{node}, \code{status} (0 = dead, 1 = alive, 2 = divided) and \code{type}, or
-\code{NULL} (with a message) if fewer than \code{min_tips} particles are alive
+\code{NULL} (with a message) if fewer than \code{min_taxa} particles are alive
 }
 \description{
 R wrapper for a faster C++ implementation of complete Age-Dependent Branching Process

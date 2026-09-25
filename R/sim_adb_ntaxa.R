@@ -1,41 +1,47 @@
-# NOTE (for later consideration): only a single rho is supported here.
-# Options for type-dependent sampling (rho per type) with exactly ntaxa sampled tips:
-# (a) mark each particle as sampled at birth with probability rho[type] (types do
+# NOTE (for later consideration): only a single sampling_prob is supported here.
+# Options for type-dependent sampling (sampling_prob per type) with exactly ntaxa sampled tips:
+# (a) mark each particle as sampled at birth with probability sampling_prob[type] (types do
 #     not change during a lifetime) and stop the simulation when ntaxa sampled
 #     particles are alive; exact analogue of the ntaxa stopping rule, but requires
-#     changes to the C++ loop (and changes the behaviour for a single rho)
-# (b) simulate until ceiling(ntaxa / min(rho)) particles are alive, then keep exactly
-#     ntaxa tips drawn with weights rho[type]; simple, but the type composition of
-#     the sample only approximately follows rho
-# (c) sample tips independently with probability rho[type] and re-simulate until
+#     changes to the C++ loop (and changes the behaviour for a single sampling_prob)
+# (b) simulate until ceiling(ntaxa / min(sampling_prob)) particles are alive, then keep exactly
+#     ntaxa tips drawn with weights sampling_prob[type]; simple, but the type composition of
+#     the sample only approximately follows sampling_prob
+# (c) sample tips independently with probability sampling_prob[type] and re-simulate until
 #     exactly ntaxa tips are sampled; exact, but may need many attempts
 #' Simulator of a phylogeny from an Age-Dependent Branching process for a fixed number of sampled particles
 #' @param ntaxa number of sampled particles - tips in the phylogeny (at least 2)
-#' @param a vector of scale parameters per type
-#' @param b vector of shape parameters per type
-#' @param d vector of death probabilities per type
-#' @param rho sampling probability
+#' @param scale vector of scale parameters per type (alternatively, give `mean_lifetime`)
+#' @param shape vector of shape parameters per type
+#' @param mean_lifetime vector of mean lifetimes per type (= scale * shape),
+#'   alternative to `scale`
+#' @param death_prob vector of death probabilities per type
+#' @param sampling_prob sampling probability
 #' @param origin_type one of 0,...,n-1 where n is the number of types
-#' @param Xi_as matrix of asymmetric type transition probabilities
-#' @param Xi_s matrix of symmetric type transition probabilities
+#' @param asym_trans_prob matrix of asymmetric type transition probabilities
+#' @param sym_trans_prob matrix of symmetric type transition probabilities
 #' @param collapse if TRUE, nodes with a single descendant after pruning are
 #'   removed (node-typed tree), otherwise they are kept (branch-typed tree)
 #' @return a treedata object with `ntaxa` tips, or `NULL` (with a message)
 #'   if too many particles died
 #' @export
-sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0,
-                               Xi_as = matrix(0), Xi_s = matrix(1), collapse = TRUE) {
+sim_adb_ntaxa_samp <- function(ntaxa, scale = NULL, shape, death_prob = 0, sampling_prob = 1, origin_type = 0,
+                               asym_trans_prob = matrix(0), sym_trans_prob = matrix(1), collapse = TRUE,
+                               mean_lifetime = NULL) {
+  scale <- .resolve_scale(scale, shape, mean_lifetime)
   # the tree parameters are validated by sim_adb_ntaxa_complete_fast
-  if (length(rho) != 1 || !is.numeric(rho) || is.na(rho) || rho <= 0 || rho > 1) {
-    stop("`rho` must be a single sampling probability in (0, 1].", call. = FALSE)
+  if (length(sampling_prob) != 1 || !is.numeric(sampling_prob) || is.na(sampling_prob) ||
+      sampling_prob <= 0 || sampling_prob > 1) {
+    stop("`sampling_prob` must be a single sampling probability in (0, 1].", call. = FALSE)
   }
 
   # estimate the number of taxa in the full tree (the C++ loop takes an integer)
-  nfull <- ceiling(ntaxa / rho)
+  nfull <- ceiling(ntaxa / sampling_prob)
 
   # simulate full tree
-  tree <- sim_adb_ntaxa_complete_fast(ntaxa = nfull, a = a, b = b, d = d, origin_type = origin_type,
-                                      Xi_as = Xi_as, Xi_s = Xi_s)
+  tree <- sim_adb_ntaxa_complete_fast(ntaxa = nfull, scale = scale, shape = shape, death_prob = death_prob,
+                                      origin_type = origin_type,
+                                      asym_trans_prob = asym_trans_prob, sym_trans_prob = sym_trans_prob)
   if (is.null(tree)) {
     return(NULL)
   }
@@ -55,20 +61,24 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0,
 # See also: Hartmann, Wong & Stadler (2010) on sampling trees with n taxa (SSA vs GSA).
 #' Simulator of the complete Age-Dependent Branching Process (up to a fixed number of living particles)
 #' @param ntaxa number of living particles at which the process is stopped (at least 2)
-#' @param a vector of scale parameters per type
-#' @param b vector of shape parameters per type
-#' @param d vector of death probabilities per type
+#' @param scale vector of scale parameters per type (alternatively, give `mean_lifetime`)
+#' @param shape vector of shape parameters per type
+#' @param mean_lifetime vector of mean lifetimes per type (= scale * shape),
+#'   alternative to `scale`
+#' @param death_prob vector of death probabilities per type
 #' @param origin_type one of 0,...,n-1 where n is the number of types
-#' @param Xi_as matrix of asymmetric type transition probabilities
-#' @param Xi_s matrix of symmetric type transition probabilities
+#' @param asym_trans_prob matrix of asymmetric type transition probabilities
+#' @param sym_trans_prob matrix of symmetric type transition probabilities
 #' @return a treedata object including dead particles, with `@data` columns
 #'   `node`, `status` (0 = dead, 1 = alive, 2 = divided) and `type`, or
 #'   `NULL` (with a message) if too many particles died
 #' @export
-sim_adb_ntaxa_complete_fast <- function(ntaxa, a, b, d, origin_type = 0,
-                                        Xi_as = matrix(0), Xi_s = matrix(1)) {
-  .check_adb_params(a, b, d, origin_type, Xi_as, Xi_s)
-  raw <- sim_adb_loop_cpp(ntaxa, a, b, d, Xi_as, Xi_s, origin_type)
+sim_adb_ntaxa_complete_fast <- function(ntaxa, scale = NULL, shape, death_prob, origin_type = 0,
+                                        asym_trans_prob = matrix(0), sym_trans_prob = matrix(1),
+                                        mean_lifetime = NULL) {
+  scale <- .resolve_scale(scale, shape, mean_lifetime)
+  .check_adb_params(scale, shape, death_prob, origin_type, asym_trans_prob, sym_trans_prob)
+  raw <- sim_adb_loop_cpp(ntaxa, scale, shape, death_prob, asym_trans_prob, sym_trans_prob, origin_type)
   nodes <- as.data.frame(raw[c("id", "height", "type", "parent", "status")])
 
   if (sum(nodes$status == 1) < ntaxa) {
@@ -92,9 +102,11 @@ sim_adb_ntaxa_complete_fast <- function(ntaxa, a, b, d, origin_type = 0,
 
 # R loop (slower than Rcpp), kept internally as a reference implementation of
 # sim_adb_ntaxa_complete_fast
-sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0,
-                                   Xi_as = matrix(0), Xi_s = matrix(1)) {
-  .check_adb_params(a, b, d, origin_type, Xi_as, Xi_s)
+sim_adb_ntaxa_complete <- function(ntaxa, scale = NULL, shape, death_prob, origin_type = 0,
+                                   asym_trans_prob = matrix(0), sym_trans_prob = matrix(1),
+                                   mean_lifetime = NULL) {
+  scale <- .resolve_scale(scale, shape, mean_lifetime)
+  .check_adb_params(scale, shape, death_prob, origin_type, asym_trans_prob, sym_trans_prob)
 
   # initialize
   nodes <- data.frame(
@@ -108,7 +120,7 @@ sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0,
   )
 
   # sample the lifetime of the first particle
-  root_edge <- rgamma(1, shape = b[origin_type + 1], scale = a[origin_type + 1])
+  root_edge <- rgamma(1, shape = shape[origin_type + 1], scale = scale[origin_type + 1])
   nodes <- dplyr::bind_rows(nodes, c(id = 1, height = root_edge, type = origin_type,
                                      parent = NA, leftchild = NA, rightchild = NA, status = 1))
   events <- nodes
@@ -123,7 +135,7 @@ sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0,
     event <- as.list(events[1, ])
     events <- events[-1, ]
 
-    if (runif(1) < d[event$type + 1]) {
+    if (runif(1) < death_prob[event$type + 1]) {
       # particle dies
       nodes[event$id, "status"] <- 0
       living <- living - 1
@@ -135,23 +147,24 @@ sim_adb_ntaxa_complete <- function(ntaxa, a, b, d, origin_type = 0,
       nodes[event$id, "status"] <- 2
       living <- living + 1
 
-      if (ncol(Xi_s) == 1) {
+      if (ncol(sym_trans_prob) == 1) {
         # single-type case
         children_types <- rep(origin_type, 2)
       } else {
         # multi-type case: sample types
-        children_types <- sample_types(parent_type = event$type, Xi_as = Xi_as, Xi_s = Xi_s)
+        children_types <- sample_types(parent_type = event$type, asym_trans_prob = asym_trans_prob,
+                                       sym_trans_prob = sym_trans_prob)
       }
 
       # sample lifetimes and add new nodes
       left_type <- children_types[1]
-      left_lifetime <- rgamma(1, shape = b[left_type + 1], scale = a[left_type + 1])
+      left_lifetime <- rgamma(1, shape = shape[left_type + 1], scale = scale[left_type + 1])
       left_node <- c(id = left_id, height = event$height + left_lifetime, type = left_type,
                      parent = event$id, leftchild = NA, rightchild = NA, status = 1)
       nodes <- dplyr::bind_rows(nodes, left_node)
 
       right_type <- children_types[2]
-      right_lifetime <- rgamma(1, shape = b[right_type + 1], scale = a[right_type + 1])
+      right_lifetime <- rgamma(1, shape = shape[right_type + 1], scale = scale[right_type + 1])
       right_node <- c(id = right_id, height = event$height + right_lifetime, type = right_type,
                       parent = event$id, leftchild = NA, rightchild = NA, status = 1)
       nodes <- dplyr::bind_rows(nodes, right_node)

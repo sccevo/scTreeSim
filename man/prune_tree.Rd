@@ -4,17 +4,17 @@
 \alias{prune_tree}
 \title{Prune tree}
 \usage{
-prune_tree(obj, rho = NA, ntips = NA, min_tips = 2, collapse = TRUE)
+prune_tree(obj, sampling_prob = NA, ntips = NA, min_taxa = 2, collapse = TRUE)
 }
 \arguments{
 \item{obj}{treedata object}
 
-\item{rho}{sampling probability (at present only): a single value for all
+\item{sampling_prob}{sampling probability (at present only): a single value for all
 types, or a vector with one value per type}
 
 \item{ntips}{number of sampled tips}
 
-\item{min_tips}{minimum number of tips in the pruned tree}
+\item{min_taxa}{minimum number of tips in the pruned tree}
 
 \item{collapse}{if TRUE, stores the standard structure (node-typed tree), otherwise keeps nodes with one descendant (branch-typed tree)}
 }
@@ -23,6 +23,6 @@ the pruned treedata object, or \code{NULL} (with a message) if too few tips rema
 }
 \description{
 Removes dead particles and then samples tips at present, either with
-probability \code{rho} each or as a fixed number \code{ntips}.
+probability \code{sampling_prob} each or as a fixed number \code{ntips}.
 }
 \keyword{internal}

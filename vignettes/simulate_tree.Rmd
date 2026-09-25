@@ -97,7 +97,7 @@ Xi_s  <- matrix(c(1 - r, 0.0, 0.0, 1.0), nrow = ntype, ncol = ntype)
 # with only one surviving child -- required for the division-triggered
 # spikes used in the binary trait model below
 dat2 <- sim_adb_origin_samp(t_or, scale, shape, d, rho, origin_type,
-                             Xi_as = Xi_as, Xi_s = Xi_s, collapse = FALSE)
+                             asym_trans_prob = Xi_as, sym_trans_prob = Xi_s, collapse = FALSE)
 
 ggtree(dat2, aes(color = type)) +
   geom_rootedge(color = "#F8766D") +

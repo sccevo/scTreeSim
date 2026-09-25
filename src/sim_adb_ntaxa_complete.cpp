@@ -20,14 +20,14 @@ struct CmpHeight {
 
 // [[Rcpp::export]]
 List sim_adb_loop_cpp(int ntaxa,
-                      NumericVector a,   // scale params (length = n_types)
-                      NumericVector b,   // shape params
-                      NumericVector d,   // death probs
-                      NumericMatrix Xi_as,
-                      NumericMatrix Xi_s,
+                      NumericVector scale,   // scale params (length = n_types)
+                      NumericVector shape,   // shape params
+                      NumericVector death_prob,   // death probs
+                      NumericMatrix asym_trans_prob,
+                      NumericMatrix sym_trans_prob,
                       int origin_type = 0) {
 
-  int ntype = a.size();
+  int ntype = scale.size();
 
   //Simulation loop
   int max_nodes = ntaxa * 4 + 10;   // upper bound; resize if needed
@@ -39,7 +39,7 @@ List sim_adb_loop_cpp(int ntaxa,
   std::vector<double> v_height(max_nodes);
 
   // root
-  double root_edge = R::rgamma(b[origin_type], a[origin_type]);
+  double root_edge = R::rgamma(shape[origin_type], scale[origin_type]);
   v_id[0]=1; v_type[0]=origin_type; v_height[0]=root_edge;
   v_parent[0]=NA_INTEGER; v_left[0]=NA_INTEGER; v_right[0]=NA_INTEGER;
   v_status[0]=1;
@@ -56,7 +56,7 @@ List sim_adb_loop_cpp(int ntaxa,
     Node ev = pq.top(); pq.pop();
     int idx = ev.id - 1;   // 0-based index
 
-    if (R::runif(0,1) < d[ev.type]) {
+    if (R::runif(0,1) < death_prob[ev.type]) {
       v_status[idx] = 0;
       living--;
     } else {
@@ -84,13 +84,13 @@ List sim_adb_loop_cpp(int ntaxa,
         rt = origin_type;
       } else {
         // multi-type: sample child types based on transition matrices
-        auto child_types = sample_child_types(ev.type, Xi_as, Xi_s, ntype);
+        auto child_types = sample_child_types(ev.type, asym_trans_prob, sym_trans_prob, ntype);
         lt = child_types.first;
         rt = child_types.second;
       }
 
-      double lh = ev.height + R::rgamma(b[lt], a[lt]);
-      double rh = ev.height + R::rgamma(b[rt], a[rt]);
+      double lh = ev.height + R::rgamma(shape[lt], scale[lt]);
+      double rh = ev.height + R::rgamma(shape[rt], scale[rt]);
 
       // sample lifetimes and properties for each new child
       // --- left child ---

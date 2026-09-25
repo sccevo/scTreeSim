@@ -6,43 +6,47 @@
 \usage{
 sim_adb_origin_samp(
   origin_time,
-  a,
-  b,
-  d = 0,
-  rho = 1,
+  scale = NULL,
+  shape,
+  death_prob = 0,
+  sampling_prob = 1,
   origin_type = 0,
-  Xi_as = matrix(0),
-  Xi_s = matrix(1),
-  min_tips = 2,
-  collapse = TRUE
+  asym_trans_prob = matrix(0),
+  sym_trans_prob = matrix(1),
+  min_taxa = 2,
+  collapse = TRUE,
+  mean_lifetime = NULL
 )
 }
 \arguments{
 \item{origin_time}{time of birth of the initial particle}
 
-\item{a}{vector of scale parameters per type}
+\item{scale}{vector of scale parameters per type (alternatively, give \code{mean_lifetime})}
 
-\item{b}{vector of shape parameters per type}
+\item{shape}{vector of shape parameters per type}
 
-\item{d}{vector of death probabilities per type}
+\item{death_prob}{vector of death probabilities per type}
 
-\item{rho}{sampling probability at present: a single value for all types,
+\item{sampling_prob}{sampling probability at present: a single value for all types,
 or a vector with one value per type (values of 0 allowed, but not all)}
 
 \item{origin_type}{one of 0,...,n-1 where n is the number of types}
 
-\item{Xi_as}{matrix of asymmetric type transition probabilities}
+\item{asym_trans_prob}{matrix of asymmetric type transition probabilities}
 
-\item{Xi_s}{matrix of symmetric type transition probabilities}
+\item{sym_trans_prob}{matrix of symmetric type transition probabilities}
 
-\item{min_tips}{minimum number of tips in the phylogeny}
+\item{min_taxa}{minimum number of tips in the phylogeny}
 
 \item{collapse}{if TRUE, nodes with a single descendant after pruning are
 removed (node-typed tree), otherwise they are kept (branch-typed tree)}
+
+\item{mean_lifetime}{vector of mean lifetimes per type (= scale * shape),
+alternative to \code{scale}}
 }
 \value{
 a treedata object, or \code{NULL} (with a message) if fewer than
-\code{min_tips} tips are alive or sampled
+\code{min_taxa} tips are alive or sampled
 }
 \description{
 Simulator of a phylogeny from an Age-Dependent Branching Process for a fixed time interval (since origin)
