@@ -15,7 +15,7 @@
 sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0,
                                Xi_as = matrix(0), Xi_s = matrix(1), collapse = TRUE) {
   # the tree parameters are validated by sim_adb_ntaxa_complete_fast
-  if (length(rho) != 1 || !is.numeric(rho) || rho <= 0 || rho > 1) {
+  if (length(rho) != 1 || !is.numeric(rho) || is.na(rho) || rho <= 0 || rho > 1) {
     stop("`rho` must be a single sampling probability in (0, 1].", call. = FALSE)
   }
 
@@ -33,6 +33,15 @@ sim_adb_ntaxa_samp <- function(ntaxa, a, b, d = 0, rho = 1, origin_type = 0,
 }
 
 
+# NOTE (for later consideration): the tree is truncated at stopping_time =
+# min(height of alive particles), i.e. at the NEXT event after ntaxa particles
+# are alive. This time depends on the residual lifetimes of the alive particles,
+# so their pendant branches are systematically too long (by about one waiting
+# time between events; strongest for small ntaxa). Truncating at the LAST
+# division (when the ntaxa-th particle is born) would avoid this: a one-sample
+# log-rank test of the lifetimes rejects the current truncation (p < 0.01 at
+# ntaxa = 20 and 100) but not the last-division truncation.
+# See also: Hartmann, Wong & Stadler (2010) on sampling trees with n taxa (SSA vs GSA).
 #' Simulator of the complete Age-Dependent Branching Process (up to a fixed number of living particles)
 #' @param ntaxa number of living particles at which the process is stopped (at least 2)
 #' @param a vector of scale parameters per type

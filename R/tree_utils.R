@@ -113,13 +113,13 @@ prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2, collapse = TRUE)
 #' @noRd
 .check_adb_params <- function(a, b, d, origin_type, Xi_as, Xi_s) {
   ntypes <- length(a)
-  if (ntypes < 1 || !is.numeric(a) || any(a <= 0)) {
+  if (ntypes < 1 || !is.numeric(a) || anyNA(a) || any(a <= 0)) {
     stop("`a` must be a non-empty numeric vector of positive scale parameters.", call. = FALSE)
   }
-  if (length(b) != ntypes || !is.numeric(b) || any(b <= 0)) {
+  if (length(b) != ntypes || !is.numeric(b) || anyNA(b) || any(b <= 0)) {
     stop("`b` must be a numeric vector of positive shape parameters with one entry per type (", ntypes, ").", call. = FALSE)
   }
-  if (length(d) != ntypes || !is.numeric(d) || any(d < 0 | d >= 1)) {
+  if (length(d) != ntypes || !is.numeric(d) || anyNA(d) || any(d < 0 | d >= 1)) {
     stop("`d` must be a numeric vector of death probabilities in [0, 1) with one entry per type (", ntypes, ").", call. = FALSE)
   }
   if (length(origin_type) != 1 || !(origin_type %in% (seq_len(ntypes) - 1L))) {
@@ -129,8 +129,8 @@ prune_tree <- function(obj, rho = NA, ntips = NA, min_tips = 2, collapse = TRUE)
       !identical(dim(Xi_as), c(ntypes, ntypes)) || !identical(dim(Xi_s), c(ntypes, ntypes))) {
     stop("`Xi_as` and `Xi_s` must both be ", ntypes, " x ", ntypes, " matrices.", call. = FALSE)
   }
-  if (any(Xi_as < 0) || any(Xi_s < 0)) {
-    stop("`Xi_as` and `Xi_s` must not contain negative probabilities.", call. = FALSE)
+  if (anyNA(Xi_as) || anyNA(Xi_s) || any(Xi_as < 0) || any(Xi_s < 0)) {
+    stop("`Xi_as` and `Xi_s` must not contain missing or negative probabilities.", call. = FALSE)
   }
   row_sums <- rowSums(Xi_as) + rowSums(Xi_s)
   if (!isTRUE(all.equal(row_sums, rep(1, ntypes), check.attributes = FALSE))) {

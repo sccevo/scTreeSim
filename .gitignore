@@ -23,6 +23,7 @@ src/*.dll
 .Rcheck/
 *.tar.gz
 *.zip
+tests/testthat/_problems/
 
 # Vignette and documentation build artifacts
 vignettes/*.html

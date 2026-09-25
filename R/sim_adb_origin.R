@@ -16,7 +16,7 @@
 sim_adb_origin_samp <- function(origin_time, a, b, d = 0, rho = 1, origin_type = 0,
                                 Xi_as = matrix(0), Xi_s = matrix(1), min_tips = 2, collapse = TRUE) {
   # the tree parameters are validated by sim_adb_origin_complete_fast
-  if (length(rho) != 1 || !is.numeric(rho) || rho <= 0 || rho > 1) {
+  if (length(rho) != 1 || !is.numeric(rho) || is.na(rho) || rho <= 0 || rho > 1) {
     stop("`rho` must be a single sampling probability in (0, 1].", call. = FALSE)
   }
 
