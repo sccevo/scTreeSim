@@ -2,7 +2,7 @@
 % Please edit documentation in R/sim_adb_ntaxa.R
 \name{sim_adb_ntaxa_samp}
 \alias{sim_adb_ntaxa_samp}
-\title{Simulator of a phylogeny from an Age-Dependent Branching Process for a fixed number of sampled particles}
+\title{Simulator of a phylogeny from an Age-Dependent Branching process for a fixed number of sampled particles}
 \usage{
 sim_adb_ntaxa_samp(
   ntaxa,
@@ -32,7 +32,14 @@ sim_adb_ntaxa_samp(
 \item{Xi_as}{matrix of asymmetric type transition probabilities}
 
 \item{Xi_s}{matrix of symmetric type transition probabilities}
+
+\item{collapse}{if TRUE, nodes with a single descendant after pruning are
+removed (node-typed tree), otherwise they are kept (branch-typed tree)}
+}
+\value{
+a treedata object with \code{ntaxa} tips, or \code{NULL} (with a message)
+if too many particles died
 }
 \description{
-Simulator of a phylogeny from an Age-Dependent Branching Process for a fixed number of sampled particles
+Simulator of a phylogeny from an Age-Dependent Branching process for a fixed number of sampled particles
 }

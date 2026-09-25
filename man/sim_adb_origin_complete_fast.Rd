@@ -33,6 +33,11 @@ sim_adb_origin_complete_fast(
 
 \item{min_tips}{minimum number of tips in the tree}
 }
+\value{
+a treedata object including dead particles, with \verb{@data} columns
+\code{node}, \code{status} (0 = dead, 1 = alive, 2 = divided) and \code{type}, or
+\code{NULL} (with a message) if fewer than \code{min_tips} particles are alive
+}
 \description{
 R wrapper for a faster C++ implementation of complete Age-Dependent Branching Process
 for a fixed time interval (since origin)

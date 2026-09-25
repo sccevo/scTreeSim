@@ -33,6 +33,9 @@ sim_adb_ntaxa_samp_gsa(
 \item{max_attempts}{maximum number of simulation attempts per tree before
 giving up (attempts fail when all particles die)}
 }
+\value{
+a phylo object with \code{ntaxa} tips
+}
 \description{
 Wrapper for general sampling approach (GSA) for tree simulation with n taxa
 Compared to the simple sampling approach (SSA), this approach considers subsequent time periods with n particles alive

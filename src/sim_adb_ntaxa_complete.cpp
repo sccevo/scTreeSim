@@ -2,45 +2,8 @@
 #include <Rcpp.h>
 #include <queue>
 #include <vector>
+#include "sample_child_types.h"
 using namespace Rcpp;
-
-
-// helper: sample child types
-std::pair<int,int> sample_child_types_ntaxa(int parent_type,
-                                      const NumericMatrix& Xi_as,
-                                      const NumericMatrix& Xi_s,
-                                      int ntype) {
-  // total probability of the row, accumulated in the same order as the loop
-  // below, so that the scaled draw r always falls below the final cum_prob:
-  // outcomes are only ever chosen within the support (no fallback needed)
-  double total = 0.0;
-  for (int i = 0; i < ntype; i++) {
-    total += Xi_s(parent_type, i);
-    total += Xi_as(parent_type, i);
-  }
-  double r = R::runif(0, 1) * total;
-  double cum_prob = 0.0;
-
-  for (int i = 0; i < ntype; i++) {
-    // symmetric: both children type i
-    cum_prob += Xi_s(parent_type, i);
-    if (r < cum_prob) {
-      return {i, i};
-    }
-    // asymmetric: one child stays parent_type, other becomes type i
-    cum_prob += Xi_as(parent_type, i);
-    if (r < cum_prob) {
-      if (R::runif(0, 1) < 0.5) {
-        return {parent_type, i};
-      } else {
-        return {i, parent_type};
-      }
-    }
-  }
-  // unreachable: r < total and the last positive-probability outcome brings
-  // cum_prob to exactly total
-  Rcpp::stop("Failed to sample child types; check the transition matrices.");
-}
 
 
 struct Node {
@@ -121,7 +84,7 @@ List sim_adb_loop_cpp(int ntaxa,
         rt = origin_type;
       } else {
         // multi-type: sample child types based on transition matrices
-        auto child_types = sample_child_types_ntaxa(ev.type, Xi_as, Xi_s, ntype);
+        auto child_types = sample_child_types(ev.type, Xi_as, Xi_s, ntype);
         lt = child_types.first;
         rt = child_types.second;
       }

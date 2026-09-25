@@ -14,17 +14,20 @@
 #' @param nsim number of trees to be generated, cut, and sampled from
 #' @param max_attempts maximum number of simulation attempts per tree before
 #'   giving up (attempts fail when all particles die)
+#' @return a phylo object with `ntaxa` tips
 #' @export
-sim_adb_ntaxa_samp_gsa <- function(ntaxa, a, b, d, rho, m = floor(2*ntaxa/rho), nsim = 10,
+sim_adb_ntaxa_samp_gsa <- function(ntaxa, a, b, d, rho, m = floor(2 * ntaxa / rho), nsim = 10,
                                    max_attempts = 100) {
-  assertthat::assert_that(m > ntaxa)
+  if (m <= ntaxa) {
+    stop("`m` must be larger than `ntaxa`.", call. = FALSE)
+  }
 
   # generate larger trees
-  trees = lapply(seq_len(nsim), function(i) {
+  trees <- lapply(seq_len(nsim), function(i) {
     # retry when too many particles die, but give up after max_attempts
     # instead of looping forever (e.g. when extinction is near-certain)
     for (attempt in seq_len(max_attempts)) {
-      tree = suppressMessages(sim_adb_ntaxa_complete_fast(ntaxa = m, a = a, b = b, d = d))
+      tree <- suppressMessages(sim_adb_ntaxa_complete_fast(ntaxa = m, a = a, b = b, d = d))
       if (!is.null(tree)) return(tree@phylo)
     }
     stop("No tree reached ", m, " living particles in ", max_attempts,
@@ -32,15 +35,15 @@ sim_adb_ntaxa_samp_gsa <- function(ntaxa, a, b, d, rho, m = floor(2*ntaxa/rho), 
   })
 
   # apply GSA and prune extinct lineages
-  trees_gsa = TreeSim::sim.gsa.taxa(treearray = trees, n = ntaxa/rho, complete = FALSE)
-  tree = sample(trees_gsa, 1)[[1]] # sample one tree
+  trees_gsa <- TreeSim::sim.gsa.taxa(treearray = trees, n = ceiling(ntaxa / rho), complete = FALSE)
+  tree <- sample(trees_gsa, 1)[[1]] # sample one tree
 
   # sample tips from tree
-  sampled_tips = sample(tree$tip.label, ntaxa)
-  tree = ape::drop.tip(tree, setdiff(tree$tip.label, sampled_tips))
-  tree$tip.label = sub('t', '', tree$tip.label)
+  sampled_tips <- sample(tree$tip.label, ntaxa)
+  tree <- ape::drop.tip(tree, setdiff(tree$tip.label, sampled_tips))
+  tree$tip.label <- sub("t", "", tree$tip.label)
 
-  return(tree)
+  tree
 }
 
 
@@ -53,17 +56,20 @@ sim_adb_ntaxa_samp_gsa <- function(ntaxa, a, b, d, rho, m = floor(2*ntaxa/rho), 
 #' @param nsim number of trees to be generated, cut, and sampled from
 #' @param max_attempts maximum number of simulation attempts per tree before
 #'   giving up (attempts fail when all particles die)
+#' @return a phylo object with `ntaxa` extant tips, including extinct lineages
 #' @export
 sim_adb_ntaxa_complete_gsa <- function(ntaxa, a, b, d, m = 2 * ntaxa, nsim = 10,
                                        max_attempts = 100) {
-  assertthat::assert_that(m > ntaxa)
+  if (m <= ntaxa) {
+    stop("`m` must be larger than `ntaxa`.", call. = FALSE)
+  }
 
   # generate larger trees
-  trees = lapply(seq_len(nsim), function(i) {
+  trees <- lapply(seq_len(nsim), function(i) {
     # retry when too many particles die, but give up after max_attempts
     # instead of looping forever (e.g. when extinction is near-certain)
     for (attempt in seq_len(max_attempts)) {
-      tree = suppressMessages(sim_adb_ntaxa_complete_fast(ntaxa = m, a = a, b = b, d = d))
+      tree <- suppressMessages(sim_adb_ntaxa_complete_fast(ntaxa = m, a = a, b = b, d = d))
       if (!is.null(tree)) return(tree@phylo)
     }
     stop("No tree reached ", m, " living particles in ", max_attempts,
@@ -71,9 +77,9 @@ sim_adb_ntaxa_complete_gsa <- function(ntaxa, a, b, d, m = 2 * ntaxa, nsim = 10,
   })
 
   # apply GSA
-  trees_gsa = TreeSim::sim.gsa.taxa(treearray = trees, n = ntaxa, complete = TRUE)
-  tree = sample(trees_gsa, 1)[[1]] # sample one tree
+  trees_gsa <- TreeSim::sim.gsa.taxa(treearray = trees, n = ntaxa, complete = TRUE)
+  tree <- sample(trees_gsa, 1)[[1]] # sample one tree
 
-  return(tree)
+  tree
 }
 

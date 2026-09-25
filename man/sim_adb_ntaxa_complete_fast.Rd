@@ -15,7 +15,7 @@ sim_adb_ntaxa_complete_fast(
 )
 }
 \arguments{
-\item{ntaxa}{number of sampled particles (at least 2)}
+\item{ntaxa}{number of living particles at which the process is stopped (at least 2)}
 
 \item{a}{vector of scale parameters per type}
 
@@ -28,6 +28,11 @@ sim_adb_ntaxa_complete_fast(
 \item{Xi_as}{matrix of asymmetric type transition probabilities}
 
 \item{Xi_s}{matrix of symmetric type transition probabilities}
+}
+\value{
+a treedata object including dead particles, with \verb{@data} columns
+\code{node}, \code{status} (0 = dead, 1 = alive, 2 = divided) and \code{type}, or
+\code{NULL} (with a message) if too many particles died
 }
 \description{
 Simulator of the complete Age-Dependent Branching Process (up to a fixed number of living particles)

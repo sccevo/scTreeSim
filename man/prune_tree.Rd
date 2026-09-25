@@ -17,6 +17,11 @@ prune_tree(obj, rho = NA, ntips = NA, min_tips = 2, collapse = TRUE)
 
 \item{collapse}{if TRUE, stores the standard structure (node-typed tree), otherwise keeps nodes with one descendant (branch-typed tree)}
 }
-\description{
-Prune tree
+\value{
+the pruned treedata object, or \code{NULL} (with a message) if too few tips remain
 }
+\description{
+Removes dead particles and then samples tips at present, either with
+probability \code{rho} each or as a fixed number \code{ntips}.
+}
+\keyword{internal}

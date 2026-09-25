@@ -30,6 +30,9 @@ sim_adb_ntaxa_complete_gsa(
 \item{max_attempts}{maximum number of simulation attempts per tree before
 giving up (attempts fail when all particles die)}
 }
+\value{
+a phylo object with \code{ntaxa} extant tips, including extinct lineages
+}
 \description{
 Simulator of complete tree under ADB process with GSA
 }

@@ -35,6 +35,13 @@ sim_adb_origin_samp(
 \item{Xi_s}{matrix of symmetric type transition probabilities}
 
 \item{min_tips}{minimum number of tips in the phylogeny}
+
+\item{collapse}{if TRUE, nodes with a single descendant after pruning are
+removed (node-typed tree), otherwise they are kept (branch-typed tree)}
+}
+\value{
+a treedata object, or \code{NULL} (with a message) if fewer than
+\code{min_tips} tips are alive or sampled
 }
 \description{
 Simulator of a phylogeny from an Age-Dependent Branching Process for a fixed time interval (since origin)
