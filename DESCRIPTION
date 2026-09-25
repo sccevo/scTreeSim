@@ -7,17 +7,26 @@ Description: Simulates single-cell lineage trees under an Age-Dependent Branchin
 License: usethis::use_mit_license()
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
+Depends:
+    R (>= 4.1.0)
 Imports:
     ape,
-    assertthat,
-    knitr,
-    magrittr,
     dplyr,
+    magrittr,
+    methods,
+    Rcpp,
+    stats,
     tibble,
     treeio,
-    TreeSim,
-    Rcpp,
-    RcppArmadillo
+    TreeSim
+Suggests:
+    ggplot2,
+    ggtree,
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0),
+    withr
 VignetteBuilder: knitr
-LinkingTo: Rcpp, RcppArmadillo
+LinkingTo: Rcpp
+Config/testthat/edition: 3
 Config/roxygen2/version: 8.1.0

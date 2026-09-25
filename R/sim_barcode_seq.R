@@ -1,54 +1,71 @@
-#' Simulator of Sequentially-Edited (TypeWriter-style) Barcodes
-#' 
-#' Parts of this code contains adaptations of code from Antoine Zwaans's implementation 
-#' of sequential barcode simulator for SciPhy software with dropout features
-#' source: https://github.com/azwaans/tidetree-dropout/blob/main/src/tidetree/simulation/SimulatedAlignment.java
-#' 
+#' Simulator of sequentially-edited barcodes
+#'
+#' Based on the SciPhy model:
+#' Seidel, S., Zwaans, A., Regalado, S. et al. SciPhy: A Bayesian phylogenetic framework using sequential genetic lineage tracing data. Nat Commun 17, 7398 (2026). https://doi.org/10.1038/s41467-026-73377-6
+#'
 #' R version of the code has been adapted from Nicola Mulberry's implementation
 #' source: https://github.com/sccevo/scTreeSim/blob/barcode_simulator/R/typewriter_barcodes.R
 #' The original authors and their respective licenses are retained where applicable.
 #'
 #' Simulates barcodes under a sequential/left-to-right editing process
-#' (unedited sites are filled in position order at rate lambda, as a
-#' Poisson process, absorbing once all k sites are edited), with an
+#' (unedited sites are filled in position order at rate `edit_rate`, as a
+#' Poisson process, absorbing once all `n_sites` sites are edited), with an
 #' additional whole-barcode silencing state competing against editing.
 #'
-#' @param tree a treedata object
-#' @param k number of target sites per barcode
-#' @param lambda_vec array of barcode-specific editing rates (length m)
-#' @param silencing_rate_vec scalar or length-m rate(s) at which an entire
+#' @param tree a treedata object of a sampled tree: ultrametric, i.e. all tips
+#'   are sampled cells at present (e.g. from [sim_adb_origin_samp()])
+#' @param n_sites number of target sites per barcode
+#' @param edit_rate scalar or length-`n_barcodes` editing rate(s) per barcode
+#' @param silencing_rate scalar or length-`n_barcodes` rate(s) at which an entire
 #'   barcode is silenced, racing against the editing process
-#' @param dropout_p_vec scalar or length-m probability that a
-#'   barcode copy drops out at a tip
-#' @param m number of tapes per cell
-#' @param chars array of unique characters/state labels to be inserted
+#' @param dropout_prob scalar or length-`n_barcodes` probability that a
+#'   barcode drops out at a tip
+#' @param n_barcodes number of barcodes (tapes) per cell
+#' @param chars vector of unique characters/state labels to be inserted
+#' @param char_probs probabilities of inserting each of `chars` (same length as
+#'   `chars`); `NULL` (default) for a uniform draw
 #'
 #' @return a data frame with one row per node in the tree and one column
-#'   per barcode copy: \code{node}, \code{barcode_1}, ..., \code{barcode_m},
-#'   each entry a length-k string with positions separated by "_"
+#'   per barcode: \code{node}, \code{barcode_1}, ..., \code{barcode_<n_barcodes>},
+#'   each entry a string of `n_sites` positions separated by "_"
 #'   (e.g. "0_A_B_0_0"), where "0" = unedited and "-" = silenced/dropout
 #'   (the silenced state; every site reads "-" once a barcode is silenced
 #'   or dropped out)
 #' @export
-typewriter_barcodes <- function(tree, k, lambda_vec, silencing_rate_vec = (0),
-                                dropout_p_vec = (0), m = length(lambda_vec), chars) {
+sim_barcode_seq <- function(tree, n_sites, edit_rate, silencing_rate = 0,
+                            dropout_prob = 0, n_barcodes, chars, char_probs = NULL) {
 
   stopifnot(methods::is(tree, "treedata"))
-
-  # allow a single shared rate to stand in for all m barcode copies
-  if (length(silencing_rate_vec) == 1) {
-    silencing_rate_vec <- rep(silencing_rate_vec[1], m)
+  if (!ape::is.ultrametric(tree@phylo)) {
+    stop("`tree` must be ultrametric (a sampled tree with all tips at present).", call. = FALSE)
   }
-  if (length(dropout_p_vec) == 1) {
-    dropout_p_vec <- rep(dropout_p_vec[1], m)
-  }
-  stopifnot(length(lambda_vec) == m)
-  stopifnot(length(silencing_rate_vec) == m)
-  stopifnot(length(dropout_p_vec) == m)
 
-  silenced_state <- "-"
-  # uniform draw over insertion characters
-  sample_p <- rep(1 / length(chars), length(chars))
+  # allow a single shared rate to stand in for all barcodes
+  if (length(edit_rate) == 1) {
+    edit_rate <- rep(edit_rate, n_barcodes)
+  }
+  if (length(silencing_rate) == 1) {
+    silencing_rate <- rep(silencing_rate, n_barcodes)
+  }
+  if (length(dropout_prob) == 1) {
+    dropout_prob <- rep(dropout_prob, n_barcodes)
+  }
+  stopifnot(length(edit_rate) == n_barcodes)
+  stopifnot(length(silencing_rate) == n_barcodes)
+  stopifnot(length(dropout_prob) == n_barcodes)
+  if (anyNA(dropout_prob) || any(dropout_prob < 0 | dropout_prob > 1)) {
+    stop("`dropout_prob` must contain probabilities in [0, 1].", call. = FALSE)
+  }
+
+  # NULL: uniform draw over insertion characters
+  if (!is.null(char_probs) &&
+      (length(char_probs) != length(chars) || anyNA(char_probs) || any(char_probs < 0) ||
+       !isTRUE(all.equal(sum(char_probs), 1)))) {
+    stop("`char_probs` must be NULL or non-negative probabilities summing to 1, one per element of `chars`.",
+         call. = FALSE)
+  }
+
+  missing_state <- "-"
 
   tree_df <- tree %>% tibble::as_tibble() %>% as.data.frame()
   root <- tree_df$node[tree_df$parent == tree_df$node]
@@ -64,27 +81,24 @@ typewriter_barcodes <- function(tree, k, lambda_vec, silencing_rate_vec = (0),
   root_edge <- tree@phylo$root.edge
   origin_height <- if (!is.null(root_edge)) heights[root] + root_edge else heights[root]
 
-  tip_nodes <- tree_df$node[tree_df$status == 1]
+  # tips are nodes 1..Ntip (all sampled cells, since the tree is ultrametric)
+  tip_nodes <- seq_along(tree@phylo$tip.label)
 
-  bc_cols <- vector("list", m)
-  for (bc in seq_len(m)) {
-    lambda <- lambda_vec[bc]
-    silencing_rate <- silencing_rate_vec[bc]
-    dropout_p <- dropout_p_vec[bc]
-
+  bc_cols <- vector("list", n_barcodes)
+  for (bc in seq_len(n_barcodes)) {
     # state_at: barcode string per node; silenced_at: whether that barcode
     # has already been silenced (needed since silencing must persist down
     # every descendant branch once it happens)
     state_at <- list()
     silenced_at <- list()
-    state_at[[as.character(root)]] <- rep("0", k)
+    state_at[[as.character(root)]] <- rep("0", n_sites)
     silenced_at[[as.character(root)]] <- FALSE
 
     # evolve along the root/origin edge first, if the tree has one
     if (!is.null(root_edge) && root_edge > 0) {
-      res <- .evolve_typewriter_branch(
+      res <- .evolve_branch_seq(
         state_at[[as.character(root)]], silenced_at[[as.character(root)]],
-        origin_height - heights[root], lambda, silencing_rate, chars, sample_p, silenced_state
+        origin_height - heights[root], edit_rate[bc], silencing_rate[bc], chars, char_probs, missing_state
       )
       state_at[[as.character(root)]] <- res$state
       silenced_at[[as.character(root)]] <- res$silenced
@@ -97,9 +111,9 @@ typewriter_barcodes <- function(tree, k, lambda_vec, silencing_rate_vec = (0),
       parent <- order_df$parent[i]
       branch_length <- heights[parent] - heights[node]
 
-      res <- .evolve_typewriter_branch(
+      res <- .evolve_branch_seq(
         state_at[[as.character(parent)]], silenced_at[[as.character(parent)]],
-        branch_length, lambda, silencing_rate, chars, sample_p, silenced_state
+        branch_length, edit_rate[bc], silencing_rate[bc], chars, char_probs, missing_state
       )
       state_at[[as.character(node)]] <- res$state
       silenced_at[[as.character(node)]] <- res$silenced
@@ -107,11 +121,11 @@ typewriter_barcodes <- function(tree, k, lambda_vec, silencing_rate_vec = (0),
 
     # apply dropout after simulation,
     # skipped for barcodes already fully silenced (nothing left to mask)
-    if (dropout_p > 0) {
+    if (dropout_prob[bc] > 0) {
       for (nd in tip_nodes) {
         key <- as.character(nd)
-        if (!silenced_at[[key]] && stats::runif(1) < dropout_p) {
-          state_at[[key]][] <- silenced_state
+        if (!silenced_at[[key]] && stats::runif(1) < dropout_prob[bc]) {
+          state_at[[key]][] <- missing_state
         }
       }
     }
@@ -124,17 +138,16 @@ typewriter_barcodes <- function(tree, k, lambda_vec, silencing_rate_vec = (0),
   }
 
   out <- data.frame(node = tree_df$node)
-  for (bc in seq_len(m)) out[[paste0("barcode_", bc)]] <- bc_cols[[bc]]
+  for (bc in seq_len(n_barcodes)) out[[paste0("barcode_", bc)]] <- bc_cols[[bc]]
   out
 }
 
+
 # Evolve one barcode copy along one branch. At each event, draw whether it
 # is an edit or silencing
-
-.evolve_typewriter_branch <- function(parent_state, parent_silenced, branch_length,
-                                      lambda, silencing_rate, chars, sample_p, silenced_state) {
+.evolve_branch_seq <- function(parent_state, parent_silenced, branch_length,
+                               edit_rate, silencing_rate, chars, char_probs, missing_state) {
   state <- parent_state
-  k <- length(state)
 
   # already silenced upstream, or no time on this branch: nothing to do
   if (parent_silenced || branch_length <= 0) {
@@ -146,8 +159,8 @@ typewriter_barcodes <- function(tree, k, lambda_vec, silencing_rate_vec = (0),
   repeat {
     # once every site is edited, only silencing can still happen
     saturated <- all(state != "0")
-    edit_rate <- if (saturated) 0 else lambda
-    event_rate <- edit_rate + silencing_rate
+    current_edit_rate <- if (saturated) 0 else edit_rate
+    event_rate <- current_edit_rate + silencing_rate
 
     if (event_rate <= 0) break  # no editing left to do and no silencing possible
 
@@ -158,13 +171,14 @@ typewriter_barcodes <- function(tree, k, lambda_vec, silencing_rate_vec = (0),
     # which of the two competing events fired, weighted by relative rate
     is_silencing <- stats::runif(1) < (silencing_rate / event_rate)
     if (is_silencing) {
-      state[] <- silenced_state
+      state[] <- missing_state
       return(list(state = state, silenced = TRUE))
     }
 
     # edit event: fill the leftmost still-unedited site
+    # (index chars via sample.int: sample(chars) would draw from 1:chars for a single number)
     pos <- min(which(state == "0"))
-    state[pos] <- sample(chars, size = 1, prob = sample_p)
+    state[pos] <- chars[sample.int(length(chars), size = 1, prob = char_probs)]
   }
 
   list(state = state, silenced = FALSE)
