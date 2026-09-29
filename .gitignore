@@ -36,3 +36,6 @@ vignettes/*.docx
 
 # benchmarking files
 benchmarking_reports/
+
+# Support files for feature development
+dev/
