@@ -333,3 +333,130 @@ sim_barcode_gestalt <- function(tree, barcode, clock_rate = 1,
   paste(segments, collapse = " ")
 }
 
+
+#' Align simulated GESTALT sequences across tips
+#'
+#' Insertions vary in length across sequences and are not, by themselves, positioned on
+#' a shared coordinate system. This reserves, for each target, as many extra columns
+#' immediately before its cut as the longest insertion observed there across
+#' \code{sequences}; every sequence's insertion at that target is right-justified into
+#' the reserved columns, padded on the left with \code{.} where its own insertion is
+#' shorter (or absent). Prefix, spacer and suffix segments never contain insertions and
+#' are left unchanged. The result: every sequence has the same length, and a given
+#' column always refers to the same barcode/insertion position across sequences.
+#'
+#' @param sequences character vector of tip sequences (as returned in the \code{sequence}
+#'   column of [sim_barcode_gestalt()], restricted to tip nodes), all edited alleles of
+#'   the same unedited \code{barcode}
+#' @param barcode unedited barcode, a single string of space-separated segments (as
+#'   passed to [sim_barcode_gestalt()])
+#' @param cut_site offset of the cut from the 3' end of each target (as passed to
+#'   [sim_barcode_gestalt()])
+#'
+#' @return a character vector of the same length as \code{sequences}, aligned
+#' @export
+align_sequences <- function(sequences, barcode, cut_site = 6) {
+  barcode_segs <- strsplit(barcode, " ", fixed = TRUE)[[1]]
+  n <- (length(barcode_segs) - 1) %/% 2
+  orig_len <- nchar(barcode_segs)
+  target_idx <- 2 * seq_len(n)
+
+  seq_segs <- lapply(sequences, function(s) strsplit(s, " ", fixed = TRUE)[[1]])
+
+  reserve <- vapply(target_idx, function(si) {
+    extra <- vapply(seq_segs, function(segs) nchar(segs[si]) - orig_len[si], integer(1))
+    max(extra)
+  }, integer(1))
+
+  vapply(seq_segs, function(segs) {
+    for (k in seq_along(target_idx)) {
+      si <- target_idx[k]
+      offset <- orig_len[si] - cut_site
+      seg <- segs[si]
+      extra <- nchar(seg) - orig_len[si]
+      head <- substr(seg, 1, offset)
+      insert_txt <- if (extra > 0) substr(seg, offset + 1, offset + extra) else ""
+      tail <- substr(seg, offset + extra + 1, nchar(seg))
+      segs[si] <- paste0(head, strrep(".", reserve[k] - extra), insert_txt, tail)
+    }
+    paste(segs, collapse = " ")
+  }, character(1), USE.NAMES = FALSE)
+}
+
+
+#' Convert aligned GESTALT sequences to GABI's event format
+#'
+#' Sequences are first aligned ([align_sequences()]); every maximal run of deleted
+#' (\code{-}) and/or inserted (lowercase) characters, bridged across alignment padding
+#' (\code{.}), is one observed event, written
+#' \code{start_delLen_minTarget_maxTarget_insert} with \code{start} a 0-based position in
+#' the *aligned* sequence (not the original barcode), \code{delLen} the number of deleted
+#' original bases, and \code{minTarget}/\code{maxTarget} the targets whose cut position
+#' lies in \code{[start, start + delLen]}. A pure insertion (\code{delLen} 0) is reported
+#' at the target's own cut position. Events for one sequence are comma-separated; a
+#' sequence with no events gives \code{""}.
+#'
+#' @param sequences character vector of tip sequences, as for [align_sequences()]
+#' @param barcode,cut_site as in [align_sequences()]
+#'
+#' @return a character vector of the same length as \code{sequences}
+#' @export
+convert_gabi_format <- function(sequences, barcode, cut_site = 6) {
+  aligned <- align_sequences(sequences, barcode, cut_site)
+
+  barcode_segs <- strsplit(barcode, " ", fixed = TRUE)[[1]]
+  n <- (length(barcode_segs) - 1) %/% 2
+  target_idx <- 2 * seq_len(n)
+  aligned_seg_len <- nchar(strsplit(aligned[1], " ", fixed = TRUE)[[1]])
+  cut_pos <- cumsum(aligned_seg_len)[target_idx] - cut_site
+
+  vapply(aligned, function(s) {
+    chars <- unlist(strsplit(gsub(" ", "", s, fixed = TRUE), "", fixed = TRUE))
+    paste(.gestalt_scan_events(chars, cut_pos), collapse = ",")
+  }, character(1), USE.NAMES = FALSE)
+}
+
+
+# Scan an aligned, space-stripped sequence for observed events. A run is any maximal
+# stretch of deleted ("-") and/or inserted (lowercase) characters; alignment padding (".")
+# bridges across an open run without closing it (so an event isn't split just because a
+# neighbouring sequence needed a longer insertion here), but padding alone never opens a
+# run. Reports each run as start_delLen_minTarget_maxTarget_insert: start is the first
+# deleted position if the run contains a deletion, else the position where the run closes
+# (which always lands exactly on the relevant target's cut, since inserts are
+# right-justified into their reserved slot).
+.gestalt_scan_events <- function(chars, cut_pos) {
+  events <- character(0)
+  open <- FALSE
+  first_del <- NA_integer_
+  del_len <- 0L
+  insert <- ""
+
+  flush <- function(close_pos) {
+    start <- if (del_len > 0) first_del else close_pos
+    matched <- which(cut_pos >= start & cut_pos <= close_pos) - 1L
+    paste(start, del_len, min(matched), max(matched), insert, sep = "_")
+  }
+
+  for (i in seq_along(chars)) {
+    ch <- chars[i]
+    pos <- i - 1L
+    if (ch == "-") {
+      open <- TRUE
+      if (is.na(first_del)) first_del <- pos
+      del_len <- del_len + 1L
+    } else if (ch %in% c("a", "c", "g", "t")) {
+      open <- TRUE
+      insert <- paste0(insert, ch)
+    } else if (ch == ".") {
+      # alignment padding: bridges an open run, never opens or closes one
+    } else if (open) {
+      events <- c(events, flush(pos))
+      open <- FALSE; first_del <- NA_integer_; del_len <- 0L; insert <- ""
+    }
+  }
+  if (open) events <- c(events, flush(length(chars)))
+
+  events
+}
+
