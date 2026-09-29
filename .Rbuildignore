@@ -1,0 +1,7 @@
+^\.claude$
+^\.Rhistory$
+^.*\.Rproj$
+^\.Rproj\.user$
+^benchmarking_reports$
+^\.swp$
+^.*\.swp$

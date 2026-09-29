@@ -1,48 +1,20 @@
-#include "RcppArmadillo.h"
-// [[Rcpp::depends(RcppArmadillo)]]
+#include <Rcpp.h>
 // [[Rcpp::depends(Rcpp)]]
 #include <vector>
+#include "sample_child_types.h"
 using namespace Rcpp;
 
 
-// helper: sample child types
-std::pair<int,int> sample_child_types(int parent_type,
-                                      const NumericMatrix& Xi_as,
-                                      const NumericMatrix& Xi_s,
-                                      int ntype) {
-  double r = R::runif(0, 1);
-  double cum_prob = 0.0;
-  
-  for (int i = 0; i < ntype; i++) {
-    // symmetric: both children type i
-    cum_prob += Xi_s(parent_type, i);
-    if (r < cum_prob) {
-      return {i, i};
-    }
-    // asymmetric: one child stays parent_type, other becomes type i
-    cum_prob += Xi_as(parent_type, i);
-    if (r < cum_prob) {
-      if (R::runif(0, 1) < 0.5) {
-        return {parent_type, i};
-      } else {
-        return {i, parent_type};
-      }
-    }
-  }
-  // fallback (should not reach here if matrices sum to 1)
-  return {parent_type, parent_type};
-}
-
 // [[Rcpp::export]]
 List sim_adb_origin_loop_cpp(double origin_time,
-                             NumericVector a,
-                             NumericVector b,
-                             NumericVector d,
-                             NumericMatrix Xi_as,
-                             NumericMatrix Xi_s,
+                             NumericVector scale,
+                             NumericVector shape,
+                             NumericVector death_prob,
+                             NumericMatrix asym_trans_prob,
+                             NumericMatrix sym_trans_prob,
                              int origin_type = 0) {
   
-  int ntype = a.size();
+  int ntype = scale.size();
   
   // Simulation loop 
   int max_nodes = 1024;
@@ -56,19 +28,26 @@ List sim_adb_origin_loop_cpp(double origin_time,
   std::vector<int>    v_edges_from, v_edges_to;
   
   // drawing root note parameters
-  double root_lifetime = R::rgamma(b[origin_type], a[origin_type]);
+  double root_lifetime = R::rgamma(shape[origin_type], scale[origin_type]);
   double root_height   = origin_time - root_lifetime;
-  
+  // censor the root like any other particle: if it outlives the origin
+  // interval it is a single tip alive at present and never divides
+  bool   root_censored = root_height < 0;
+  if (root_censored) {
+    root_lifetime = origin_time;
+    root_height = 0.0;
+  }
+
   v_id[0]=1; v_type[0]=origin_type; v_height[0]=root_height;
   v_parent[0]=NA_INTEGER; v_left[0]=NA_INTEGER; v_right[0]=NA_INTEGER;
   v_status[0]=1;
-  
+
   int event_counter = 1;
   int n_nodes = 1;
-  
+
   // event stack: store indices into v_ arrays (0-based)
   std::vector<int> event_stack;
-  event_stack.push_back(0);
+  if (!root_censored) event_stack.push_back(0);
   
   while (!event_stack.empty()) {
     int idx = event_stack.back();
@@ -76,7 +55,7 @@ List sim_adb_origin_loop_cpp(double origin_time,
     
 
     // Explicit death check (original behavior)
-    if (R::runif(0,1) < d[v_type[idx]]) {
+    if (R::runif(0,1) < death_prob[v_type[idx]]) {
       v_status[idx] = 0;  // Dies
       continue;
     }
@@ -107,14 +86,14 @@ List sim_adb_origin_loop_cpp(double origin_time,
       rt = origin_type;
     } else {
     // multi type case
-      auto child_types = sample_child_types(v_type[idx], Xi_as, Xi_s, ntype);
+      auto child_types = sample_child_types(v_type[idx], asym_trans_prob, sym_trans_prob, ntype);
       lt = child_types.first;
       rt = child_types.second;
     }
     
     // sample lifetimes and properties for each new child
     // --- left child ---
-    double left_lifetime = R::rgamma(b[lt], a[lt]);
+    double left_lifetime = R::rgamma(shape[lt], scale[lt]);
     double left_height   = v_height[idx] - left_lifetime;
     bool   left_censored = left_height < 0;
     if (left_censored) { 
@@ -139,7 +118,7 @@ List sim_adb_origin_loop_cpp(double origin_time,
     // It will be marked as a tip in the final tree
     
     // --- right child ---
-    double right_lifetime = R::rgamma(b[rt], a[rt]);
+    double right_lifetime = R::rgamma(shape[rt], scale[rt]);
     double right_height   = v_height[idx] - right_lifetime;
     bool   right_censored = right_height < 0;
     if (right_censored) { 
