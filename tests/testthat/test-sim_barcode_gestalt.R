@@ -392,7 +392,7 @@ test_that("sim_barcode_gestalt evolves along the root edge like an ordinary bran
 })
 
 
-# alignment and GABI event format
+# alignment and event format
 # toy barcode: prefix "CG" (2bp), target 0 "GATACG" (6bp, cut_pos 6), spacer "AG" (2bp),
 # target 1 "GACACG" (6bp, cut_pos 14), suffix "GA" (2bp); cut_site = 2
 toy_barcode_segs <- c("CG", "GATACG", "AG", "GACACG", "GA")
@@ -404,15 +404,31 @@ toy_sequences <- c(
   "CG GATACG AG GACAg-- GA"     # target 0 untouched; insertion "g" + right-deletion at target 1
 )
 
-test_that("align_sequences right-justifies inserts and pads with '.' so all sequences have equal length", {
+toy_aligned <- c(
+  "CG GATA-- -- GACA..CG GA",
+  "CG GATA-- -- GACAttCG GA",
+  "CG GATACG AG GACAg.-- GA"
+)
+
+test_that("align_sequences left-justifies inserts and pads with '.' so all sequences have equal length", {
   aligned <- align_sequences(toy_sequences, toy_barcode, cut_site = 2)
 
-  expect_equal(aligned, c(
-    "CG GATA-- -- GACA..CG GA",
-    "CG GATA-- -- GACAttCG GA",
-    "CG GATACG AG GACA.g-- GA"
-  ))
+  expect_equal(aligned, toy_aligned)
   expect_length(unique(nchar(aligned)), 1)
+})
+
+test_that("align_sequences infers the cut from the insertions when cut_site is not given", {
+  expect_equal(align_sequences(toy_sequences, toy_barcode), toy_aligned)
+})
+
+test_that("align_sequences warns when cut_site is inconsistent with the insertions and aligns at the insertions", {
+  expect_warning(aligned <- align_sequences(toy_sequences, toy_barcode, cut_site = 3), "cut_site")
+  expect_equal(aligned, toy_aligned)
+})
+
+test_that("align_sequences stops when insertions at one target are at different positions", {
+  sequences <- c("CG GATACG AG GACAttCG GA", "CG GATACG AG GACACtG GA")
+  expect_error(align_sequences(sequences, toy_barcode), "different positions")
 })
 
 test_that("align_sequences adds no padding to a target with no insertion in any sequence", {
@@ -421,65 +437,97 @@ test_that("align_sequences adds no padding to a target with no insertion in any 
   expect_equal(nchar(target0), rep(6, 3))  # original target-0 length, unchanged
 })
 
-test_that("convert_gabi_format reports events with positions in the aligned coordinate system", {
-  events <- convert_gabi_format(toy_sequences, toy_barcode, cut_site = 2)
+test_that("convert_event_format reports events with positions in the unedited barcode coordinates", {
+  events <- convert_event_format(toy_sequences, toy_barcode, cut_site = 2)
 
   expect_equal(events, c(
     "6_4_0_0_",
-    "6_4_0_0_,16_0_1_1_tt",
-    "16_2_1_1_g"
+    "6_4_0_0_,14_0_1_1_tt",
+    "14_2_1_1_g"
   ))
 })
 
-test_that("convert_gabi_format: a deletion reaching a target's own cut is credited to it even without an insertion there", {
-  # target 1's cut reached only via left-deletion (no insertion of its own), while another
-  # sequence's insertion at target 1 forces a padded reserve between the deletion and the cut
+test_that("convert_event_format: inserted bases do not shift the positions of later events", {
   sequences <- c(
-    "CG GATACG AG ----CG GA",     # left-deletion at target 1 (pos 10-13), reaching its own cut
-    "CG GATACG AG GACAttCG GA"    # insertion "tt" at target 1's cut, forces a 2-column reserve
+    "CG GATAgg-- AG GAC--- GA",
+    "CG GATA-- AG GAC--- GA"
   )
-  events <- convert_gabi_format(sequences, toy_barcode, cut_site = 2)
-  expect_equal(events[1], "10_4_1_1_")
+  events <- convert_event_format(sequences, toy_barcode, cut_site = 2)
+  expect_equal(events[1], "6_2_0_0_gg,13_3_1_1_")
+  expect_equal(events[2], "6_2_0_0_,13_3_1_1_")
 })
 
-test_that("convert_gabi_format reports no events for an unedited sequence", {
-  events <- convert_gabi_format(c(toy_barcode, toy_sequences[2]), toy_barcode, cut_site = 2)
+test_that("convert_event_format: an insertion between a left and a right deletion is one event", {
+  events <- convert_event_format("CG GA--tt-- AG GACACG GA", toy_barcode, cut_site = 2)
+  expect_equal(events, "4_4_0_0_tt")
+})
+
+test_that("convert_event_format: a deletion ending exactly at a target's cut is credited to it", {
+  events <- convert_event_format("CG GATACG AG ----CG GA", toy_barcode, cut_site = 2)
+  expect_equal(events, "10_4_1_1_")
+})
+
+test_that("convert_event_format reports no events for an unedited sequence", {
+  events <- convert_event_format(c(toy_barcode, toy_sequences[2]), toy_barcode, cut_site = 2)
   expect_equal(events[1], "")
 })
 
+test_that("convert_event_format does not depend on the other sequences", {
+  expect_equal(
+    convert_event_format(toy_sequences, toy_barcode, cut_site = 2)[1],
+    convert_event_format(toy_sequences[1], toy_barcode, cut_site = 2)
+  )
+})
 
-# another example
-# open issue: the expected values below assume each edited target's insertion sits at a position that does not match layout$targets$cut_pos 
-# for this barcode/cut_site (checked by decoding raw positions from the sequences directly: 
-# e.g. the target-0 edit in sequence 2 places its insertion 10 positions before that target's actual cut, 
-# and the offset differs again (2, then 1 position) for the target-2 and target-3 edits - not a consistent shift). 
-# Also, running .gestalt_apply()/.gestalt_render() with a left_del/right_del/insert combination on the same barcode
-# renders the insertion *between* the left- and right-deleted spans (e.g. "GATACGA----------tat---TGG"), 
-# not before both of them as in these hand-written sequences.
-# So either these sequences don't correspond to what sim_barcode_gestalt() would ever produce, 
-# or align_sequences()/convert_gabi_format() are expected to locate each target's insertion from the data 
-# rather than from the cut_site-derived formula - to be confirmed before re-enabling.
-# 
-# toy_barcode <- "CG GATACGATACGCGCACGCTATGG AGTC GATACGATACGCGCACGCTATGG AGTC GATACGATACGCGCACGCTATGG AGTC GATACGATACGCGCACGCTATGG GAAAAAAAAAAAAAAA"
-# toy_sequences <- c(
-#   "CG GATACGATACGCGCACGCTATGG AGTC GATACGATACGCG---------- AGTC GATACGATACGCGCACGCTATGG AGTC GATACGATACGCGC--tatGCTATGG GAAAAAAAAAAAAAAA",
-#   "CG GATACGAa-------------TGG AGTC GATACGATACGCG---------- AGTC GATACGATACGCGCAtaaggtc------GG AGTC GATACGATACGCGC--tatGCTATGG GAAAAAAAAAAAAAAA"
-# )
-#
-# test_that("align_sequences reproduces example", {
-#   aligned <- align_sequences(toy_sequences, toy_barcode, cut_site = 6)
-#
-#   expect_equal(aligned, c(
-#     "CG GATACGA.TACGCGCACGCTATGG AGTC GATACGATACGCG---------- AGTC GATACGATACGCGCA.......CGCTATGG AGTC GATACGATACGCGC--tatGCTATGG GAAAAAAAAAAAAAAA",
-#     "CG GATACGAa-------------TGG AGTC GATACGATACGCG---------- AGTC GATACGATACGCGCAtaaggtc------GG AGTC GATACGATACGCGC--tatGCTATGG GAAAAAAAAAAAAAAA"
-#   ))
-# })
-#
-# test_that("convert_gabi_format reproduces example", {
-#   events <- convert_gabi_format(toy_sequences, toy_barcode, cut_site = 6)
-#
-#   expect_equal(events, c(
-#     "43_10_1_1_,125_2_3_3_tat",
-#     "10_13_0_0_a,43_10_1_1_,73_6_2_2_taaggtc,125_2_3_3_tat"
-#   ))
-# })
+
+test_that("convert_event_to_indel_format copies an event to every affected target and pads with NONE", {
+  events <- "138_2_0_0_,217_90_3_6_,323_50_7_8_"
+  expect_equal(
+    convert_event_to_indel_format(events, 10),
+    "2D+138,NONE,NONE,90D+217,90D+217,90D+217,90D+217,50D+323,50D+323,NONE"
+  )
+})
+
+test_that("convert_event_to_indel_format concatenates several events at one target with '&'", {
+  expect_equal(
+    convert_event_to_indel_format("243_1_4_4_,248_13_4_4_", 6),
+    "NONE,NONE,NONE,NONE,1D+243&13D+248,NONE"
+  )
+})
+
+test_that("convert_event_to_indel_format writes insertions with their length and bases", {
+  expect_equal(
+    convert_event_to_indel_format(c("140_0_0_0_TACTG", "10_3_0_0_ac"), 2),
+    c("5I+140+TACTG,NONE", "3D+10&2I+10+ac,NONE")
+  )
+})
+
+test_that("convert_event_to_indel_format gives NONE for every target for no events", {
+  expect_equal(convert_event_to_indel_format(c("", "6_4_0_0_"), 2), c("NONE,NONE", "4D+6,NONE"))
+})
+
+test_that("convert_indel_format converts sequences to the per-target indel format", {
+  expect_equal(
+    convert_indel_format(toy_sequences, toy_barcode, cut_site = 2),
+    c("4D+6,NONE", "4D+6,2I+14+tt", "NONE,2D+14&1I+14+g")
+  )
+})
+
+
+# another example, not simulated sequences: 
+# the insertions do not sit at the cut implied by cut_site = 6, so align_sequences() warns and aligns at the position the insertions occur at
+toy_barcode <- "CG GATACGATACGCGCACGCTATGG AGTC GATACGATACGCGCACGCTATGG AGTC GATACGATACGCGCACGCTATGG AGTC GATACGATACGCGCACGCTATGG GAAAAAAAAAAAAAAA"
+toy_sequences <- c(
+  "CG GATACGATACGCGCACGCTATGG AGTC GATACGATACGCG---------- AGTC GATACGATACGCGCACGCTATGG AGTC GATACGATACGCGC--tatGCTATGG GAAAAAAAAAAAAAAA",
+  "CG GATACGAa-------------TGG AGTC GATACGATACGCG---------- AGTC GATACGATACGCGCAtaaggtc------GG AGTC GATACGATACGCGC--tatGCTATGG GAAAAAAAAAAAAAAA"
+)
+
+test_that("align_sequences reproduces example", {
+  expect_warning(aligned <- align_sequences(toy_sequences, toy_barcode, cut_site = 6), "cut_site")
+  expect_equal(aligned, align_sequences(toy_sequences, toy_barcode))
+
+  expect_equal(aligned, c(
+    "CG GATACGA.TACGCGCACGCTATGG AGTC GATACGATACGCG---------- AGTC GATACGATACGCGCA.......CGCTATGG AGTC GATACGATACGCGC--tatGCTATGG GAAAAAAAAAAAAAAA",
+    "CG GATACGAa-------------TGG AGTC GATACGATACGCG---------- AGTC GATACGATACGCGCAtaaggtc------GG AGTC GATACGATACGCGC--tatGCTATGG GAAAAAAAAAAAAAAA"
+  ))
+})

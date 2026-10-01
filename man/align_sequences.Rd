@@ -2,31 +2,30 @@
 % Please edit documentation in R/sim_barcode_gestalt.R
 \name{align_sequences}
 \alias{align_sequences}
-\title{Align simulated GESTALT sequences across tips}
+\title{Align GESTALT sequences}
 \usage{
-align_sequences(sequences, barcode, cut_site = 6)
+align_sequences(sequences, barcode, cut_site = NULL)
 }
 \arguments{
-\item{sequences}{character vector of tip sequences (as returned in the \code{sequence}
-column of \code{\link[=sim_barcode_gestalt]{sim_barcode_gestalt()}}, restricted to tip nodes), all edited alleles of
-the same unedited \code{barcode}}
+\item{sequences}{character vector of sequences (as returned in the \code{sequence} column of \code{\link[=sim_barcode_gestalt]{sim_barcode_gestalt()}}),
+all edited alleles of the same unedited \code{barcode}}
 
-\item{barcode}{unedited barcode, a single string of space-separated segments (as
-passed to \code{\link[=sim_barcode_gestalt]{sim_barcode_gestalt()}})}
+\item{barcode}{unedited barcode, a single string of space-separated segments (as passed to \code{\link[=sim_barcode_gestalt]{sim_barcode_gestalt()}})}
 
-\item{cut_site}{offset of the cut from the 3' end of each target (as passed to
-\code{\link[=sim_barcode_gestalt]{sim_barcode_gestalt()}})}
+\item{cut_site}{optional offset of the cut from the 3' end of each target (as passed to \code{\link[=sim_barcode_gestalt]{sim_barcode_gestalt()}});
+if \code{NULL} (the default), the cut is inferred from the insertions}
 }
 \value{
 a character vector of the same length as \code{sequences}, aligned
 }
 \description{
-Insertions vary in length across sequences and are not, by themselves, positioned on
-a shared coordinate system. This reserves, for each target, as many extra columns
-immediately before its cut as the longest insertion observed there across
-\code{sequences}; every sequence's insertion at that target is right-justified into
-the reserved columns, padded on the left with \code{.} where its own insertion is
-shorter (or absent). Prefix, spacer and suffix segments never contain insertions and
-are left unchanged. The result: every sequence has the same length, and a given
-column always refers to the same barcode/insertion position across sequences.
+Insertions vary in length across sequences and are not, by themselves, positioned on a shared coordinate system.
+This reserves, for each target, as many extra columns at its cut as the longest insertion observed there across \code{sequences};
+every sequence's insertion at that target is left-justified and padded into the reserved columns.
+Prefix, spacer and suffix segments never contain insertions and are left unchanged.
+}
+\details{
+The cut of a target is located from the insertions themselves (every insertion sits immediately at its target's cut), so \code{cut_site} is optional.
+If given, the insertions are checked against it: where they are not at the cut implied by it (e.g. for empirical sequences),
+a warning is raised and the position of the insertions is used.
 }
