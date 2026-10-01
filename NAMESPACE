@@ -2,7 +2,9 @@
 
 export(align_sequences)
 export(barcode_rate)
-export(convert_gabi_format)
+export(convert_event_format)
+export(convert_event_to_indel_format)
+export(convert_indel_format)
 export(rate_constant)
 export(rate_exp_decay)
 export(rate_fn)
