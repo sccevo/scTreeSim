@@ -134,6 +134,10 @@ test_that("a root given as two sequences starts the simulation from that genotyp
   out <- sim_gt16_nt_diploid(tree, sequences = c("CGTAAC", "CGTATC"), rates = rates, pi = pi,
                              clock_rate = 1e-12)
   expect_true(all(out$genotype == "CC_GG_TT_AA_AT_CC"))
+
+  # stating the length alongside the sequences is allowed, and changes nothing
+  expect_equal(sim_gt16_nt_diploid(tree, sequences = c("CGTAAC", "CGTATC"), rates = rates, pi = pi,
+                                   l = 6, clock_rate = 1e-12), out)
 })
 
 test_that("sim_gt16_nt_diploid returns one genotype sequence of l sites per node", {
@@ -169,9 +173,9 @@ test_that("input is validated", {
   expect_error(sim_gt16_nt_diploid(tree, l = 3, pi = rep(0.5, 16)), "summing to 1")
   expect_error(sim_gt16_nt_diploid(tree, l = 3, pi = rep(0.2, 5)), "must have length 16")
   expect_error(sim_gt16_nt_diploid(tree, l = 3, epsilon = 1.2), "must be probabilities")
-  expect_error(sim_gt16_nt_diploid(tree), "either `sequences`")
-  expect_error(sim_gt16_nt_diploid(tree, sequences = c("AC", "GT"), l = 2), "not both")
+  expect_error(sim_gt16_nt_diploid(tree), "Supply `sequences`")
   expect_error(sim_gt16_nt_diploid(tree, sequences = c("ACG", "AC")), "must be aligned")
+  expect_error(sim_gt16_nt_diploid(tree, sequences = c("AC", "GT"), l = 3), "must match the length")
   # all equilibrium mass on one state leaves no substitutions to normalize by
   expect_error(sim_gt16_nt_diploid(tree, l = 3, pi = c(1, rep(0, 15))), "degenerate GT16 rate matrix")
 })

@@ -70,7 +70,7 @@
 #' @param sequences the root genotype, given as the two aligned allele
 #'   sequences of length `l`, e.g. `c("CGTAAC", "CGTATC")`; the two strings
 #'   are paired site by site into the GT16 states (here CC, GG, TT, AA, AT,
-#'   CC). Supply this or `l`, not both
+#'   CC). Supply this or `l`
 #' @param rates the six nucleotide exchangeabilities, in the order
 #'   \eqn{r_{AC}, r_{AG}, r_{AT}, r_{CG}, r_{CT}, r_{GT}}; a common scaling
 #'   of all six is removed by the rate normalization
@@ -78,8 +78,9 @@
 #'   state order above, or 4 nucleotide frequencies (in the order A, C, G, T)
 #'   from which the genotype frequencies are formed as
 #'   \eqn{\pi_{ab} = \pi_a \pi_b}; `NULL` (default) for a uniform 1/16
-#' @param l number of SNV sites, used in place of `sequences` to draw the
-#'   root genotypes from `pi` instead of fixing them
+#' @param l number of SNV sites. Used in place of `sequences` to draw the
+#'   root genotypes from `pi` instead of fixing them; alongside `sequences`
+#'   it is optional, and must then give their length
 #' @param clock_rate substitution rate applied per unit branch length
 #' @param epsilon combined amplification and sequencing error probability
 #' @param delta allelic dropout probability
@@ -100,11 +101,15 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
 
   # the root genotypes are either read off the two aligned sequences or,
   # failing that, drawn from the equilibrium distribution over `l` sites
-  if (is.null(sequences) == is.null(l)) {
-    stop("Supply either `sequences` (the two aligned root sequences) or `l` (the number of sites), not both.",
-         call. = FALSE)
+  if (is.null(sequences) && is.null(l)) {
+    stop("Supply `sequences` (the two aligned root sequences) or `l` (the number of sites).", call. = FALSE)
   }
   root_state <- if (is.null(sequences)) NULL else .gt16_pair_sequences(sequences)
+  if (!is.null(root_state) && !is.null(l) && as.integer(l) != length(root_state)) {
+    # `l` is redundant alongside `sequences`, but if given it has to agree
+    stop("`l` (", as.integer(l), ") must match the length of `sequences` (", length(root_state), ").",
+         call. = FALSE)
+  }
   l <- if (is.null(root_state)) as.integer(l) else length(root_state)
   stopifnot(l >= 1L)
 
