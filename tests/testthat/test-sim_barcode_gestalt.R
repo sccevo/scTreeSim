@@ -379,6 +379,17 @@ test_that("sim_barcode_gestalt: a single cut_rate is recycled to all targets", {
   expect_identical(out_single, out_full)
 })
 
+test_that("sim_barcode_gestalt simulates a tree with zero-length edges (a parent is simulated before its children)", {
+  # tips t1-t3 hang from their parent by zero-length edges, so parent and child have the same height
+  tree <- treeio::as.treedata(ape::read.tree(text = "(((t1:0,t2:0,t3:0):1,t4:1):1,t5:2);"))
+  tree_df <- as.data.frame(tibble::as_tibble(tree))
+  for (seed in 1:3) {
+    out <- withr::with_seed(seed, sim_barcode_gestalt(tree, barcode, cut_rates = rep(2, 4)))
+    expect_false(any(grepl("NA", out$sequence)))
+    zero <- tree_df$branch.length == 0 & !is.na(tree_df$branch.length) & tree_df$parent != tree_df$node
+    expect_identical(out$sequence[match(tree_df$node[zero], out$node)], out$sequence[match(tree_df$parent[zero], out$node)])
+  }
+})
 test_that("sim_barcode_gestalt evolves along the root edge like an ordinary branch", {
   withr::local_seed(20)
   tree_big_root <- adb_tree

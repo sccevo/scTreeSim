@@ -68,7 +68,8 @@ sim_barcode_gestalt <- function(tree, barcode, clock_rate = 1,
   
   depth_from_root <- ape::node.depth.edgelength(tree@phylo)
   heights <- max(depth_from_root) - depth_from_root
-  order_df <- tree_df[order(-heights[tree_df$node]), ]
+  # edges in cladewise order: a parent is always visited before its children (also for zero-length edges)
+  edges <- ape::reorder.phylo(tree@phylo, "cladewise")$edge
   
   root_edge <- tree@phylo$root.edge
   origin_height <- if (!is.null(root_edge)) heights[root] + root_edge else heights[root]
@@ -91,10 +92,9 @@ sim_barcode_gestalt <- function(tree, barcode, clock_rate = 1,
   }
   
   # then walk every remaining branch, parent state -> child state
-  for (i in seq_len(nrow(order_df))) {
-    node <- order_df$node[i]
-    if (node == root) next
-    parent <- order_df$parent[i]
+  for (i in seq_len(nrow(edges))) {
+    parent <- edges[i, 1]
+    node <- edges[i, 2]
     branch_length <- heights[parent] - heights[node]
     
     state_at[[as.character(node)]] <- evolve(state_at[[as.character(parent)]], branch_length)
