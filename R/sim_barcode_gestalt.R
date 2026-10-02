@@ -47,6 +47,7 @@ sim_barcode_gestalt <- function(tree, barcode, clock_rate = 1,
   }
   
   barcode <- strsplit(barcode, " ", fixed = TRUE)[[1]]
+  stopifnot("`crucial_pos` must have length 2 (left, right)" = length(crucial_pos) == 2)
   layout <- .gestalt_layout(barcode, cut_site, crucial_pos)
   
   if (length(cut_rates) == 1) cut_rates <- rep(cut_rates, layout$n)
@@ -54,7 +55,6 @@ sim_barcode_gestalt <- function(tree, barcode, clock_rate = 1,
     stop("`cut_rates` must have one entry per target (", layout$n, "), or a single shared value.", call. = FALSE)
   }
   stopifnot(
-    "`crucial_pos` must have length 2 (left, right)" = length(crucial_pos) == 2,
     "`long_trim_factors` must have length 2 (left, right)" = length(long_trim_factors) == 2,
     "`trim_zero_probs` must be a 2x2 matrix (rows left/right, columns focal/double)" =
       identical(dim(trim_zero_probs), c(2L, 2L)),
@@ -133,6 +133,11 @@ sim_barcode_gestalt <- function(tree, barcode, clock_rate = 1,
   Llong <- c(Lmax[1] + 1, cut_pos[-1] - prot_right[-n])
   Rmax <- c(diff(cut_pos) - 1, total_length - cut_pos[n] - 1)
   Rlong <- c(prot_left[-1] - cut_pos[-n] + 1, Rmax[n] + 1)
+
+  # trim draws are redrawn until they fit, so an empty range would never terminate
+  if (any(Llong < 2) || any(Rlong < 2) || any(Llong[-1] > Lmax[-1]) || any(Rlong[-n] > Rmax[-n])) {
+    stop("`crucial_pos` is incompatible with the spacing of the targets.", call. = FALSE)
+  }
 
   list(
     n = n,
@@ -322,7 +327,7 @@ sim_barcode_gestalt <- function(tree, barcode, clock_rate = 1,
   chars <- ifelse(allele$deleted, "-", bases)
 
   segments <- vapply(seq_along(barcode), function(s) {
-    idx <- seg_start[s]:seg_end[s]
+    idx <- seq_len(nchar(barcode[s])) + seg_start[s] - 1
     pieces <- vapply(idx, function(i) {
       insert <- allele$insertions[[as.character(i - 1)]]
       paste0(if (is.null(insert)) "" else insert, chars[i])
@@ -450,6 +455,7 @@ convert_event_format <- function(sequences, barcode, cut_site = 6) {
   
   flush <- function() {
     matched <- which(cut_pos >= start & cut_pos <= pos) - 1L
+    if (length(matched) == 0) matched <- NA_integer_
     paste(start, del_len, min(matched), max(matched), insert, sep = "_")
   }
   
