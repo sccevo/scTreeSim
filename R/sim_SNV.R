@@ -10,7 +10,61 @@
 #' source: https://github.com/bioDS/beast-phylonco-paper/tree/main
 #' The GT16 model itself is due to Kozlov et al. (2022), CellPhy, Genome Biology 23, 37.
 #'
-
+#' Simulates diploid single-nucleotide variants along a fixed tree under the
+#' GT16 model. The 16 states are the *ordered* pairs of nucleotides
+#' \code{AA, AC, AG, AT, CA, CC, ..., TT}, i.e. one entry per allele copy, so
+#' \code{AG} and \code{GA} are distinct states and are not collapsed.
+#'
+#' The root genotype is supplied as the two aligned allele sequences
+#' (`sequences`), which are paired site by site: `c("CGTAAC", "CGTATC")` is
+#' the six-site root genotype \code{CC_GG_TT_AA_AT_CC}. Each site then
+#' evolves independently down the tree.
+#'
+#' Instead of forming the transition probability matrix
+#' \eqn{P(t) = \exp(Qt)} for every branch and site, the continuous-time
+#' Markov chain is simulated mechanistically, event by event, along the
+#' actual branch length (see Details). The resulting process is equivalent
+#' to the GT16 transition model, it is just realised by sampling waiting
+#' times rather than by exponentiating a 16x16 matrix.
+#'
+#' @details
+#' **States and events.** An individual substitution event changes exactly one
+#' of the two allele copies, so every genotype has at most six immediate
+#' neighbours: three substitutions of the first allele and three of the
+#' second. From \code{AG}, for example, the possible events are
+#' \code{AG -> CG, GG, TG} (first allele) and \code{AG -> AA, AC, AT}
+#' (second allele). \code{AG -> CT} has an instantaneous rate of zero,
+#' because both copies would have to change at once; it is still reachable
+#' over a branch through two events, e.g. \code{AG -> CG -> CT}.
+#'
+#' **Rates.** With `rates` the six GTR-like nucleotide exchangeabilities
+#' \eqn{(r_{AC}, r_{AG}, r_{AT}, r_{CG}, r_{CT}, r_{GT})} and `pi` the
+#' genotype equilibrium frequencies, the GT16 rate matrix is
+#' \eqn{Q_{ij} = R_{ij} \pi_j} for genotypes \eqn{i, j} differing at exactly
+#' one allele (where \eqn{R_{ij}} is the exchangeability of the two
+#' nucleotides that differ), zero for all other off-diagonal entries, and
+#' \eqn{Q_{ii} = -\sum_{j \neq i} Q_{ij}}. \eqn{Q} is then rescaled so that
+#' one unit of branch length is one expected substitution,
+#' \eqn{\beta = -1 / (\pi \cdot \mathrm{diag}(Q))}. The event rates used by
+#' the simulator are read straight off the off-diagonal entries of this
+#' normalized \eqn{Q}, so they agree with it by construction. The
+#' normalization matters: a common factor cancels when choosing *which*
+#' event fires, but not when drawing the waiting time until it fires.
+#'
+#' **Branch algorithm.** Each site starts the branch in the genotype
+#' inherited from its parent. The total outgoing rate \eqn{R} of the current
+#' genotype gives a waiting time \eqn{\Delta t \sim \mathrm{Exp}(R)}; if the
+#' elapsed time plus \eqn{\Delta t} exceeds the branch time the genotype is
+#' passed unchanged to the child, otherwise one event is drawn with
+#' probability \eqn{r_k / R}, applied, and the remaining branch time is
+#' simulated the same way. A branch may therefore carry zero, one or many
+#' substitutions, and a zero-length branch always carries none.
+#'
+#' **Error model.** `epsilon` (combined amplification and sequencing error)
+#' and `delta` (allelic dropout) are applied *after* the evolutionary
+#' simulation, to the tips only, following equation (2) of Chen et al.
+#' (2022). They never feed back into the substitution process: the true
+#' genotypes are returned alongside the observed ones.
 #'
 #' @param tree a treedata object
 #' @param sequences the root genotype, given as the two aligned allele
