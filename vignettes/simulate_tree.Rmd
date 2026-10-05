@@ -145,19 +145,20 @@ head(bc_seq)
 
 # Non-sequential (TiDeTree-style) barcodes
 
-Each of the `k` sites evolves independently under a continuous-time Markov
+Each of the `n_sites` sites evolves independently under a continuous-time Markov
 chain, editing only within a bounded time window, with its own competing
 silencing rate.
 
 ```{r}
-k <- 10
-edit_rates <- c(0.5, 0.3, 0.2)  # E = 3 possible edit outcomes
+n_sites <- 10
+edit_rate <- 1                    # rate of any edit per time unit per site
+edit_probs <- c(0.5, 0.3, 0.2)    # relative frequencies of E = 3 edit outcomes
 silencing_rate <- 0.05
-edit_height <- 5    # window ends 5 time units before present
+edit_height <- 5    # window starts 5 time units before present
 edit_duration <- 3  # window spans (edit_height - edit_duration, edit_height]
 
-bc_nonseq <- sim_barcode_nonseq(dat2, k, edit_rates, silencing_rate,
-                                 edit_height, edit_duration, dropout_p = 0)
+bc_nonseq <- sim_barcode_nonseq(dat2, n_sites, edit_rate, edit_probs, silencing_rate,
+                                edit_height, edit_duration, dropout_prob = 0)
 head(bc_nonseq)
 ```
 

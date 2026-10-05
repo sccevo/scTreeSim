@@ -2,35 +2,39 @@
 % Please edit documentation in R/sim_barcode_nonseq.R
 \name{sim_barcode_nonseq}
 \alias{sim_barcode_nonseq}
-\title{Non-sequential (TiDeTree-style) Barcode Simulator}
+\title{Simulator of lineage barcodes with independent targets}
 \usage{
 sim_barcode_nonseq(
   tree,
-  k,
-  edit_rates,
+  n_sites,
+  edit_rate,
+  edit_probs,
   silencing_rate,
-  edit_height,
-  edit_duration,
-  dropout_p = 0
+  edit_height = NULL,
+  edit_duration = NULL,
+  dropout_prob = 0
 )
 }
 \arguments{
-\item{tree}{a treedata object; node identity is taken from tree@data$node}
+\item{tree}{a treedata object of a sampled tree: ultrametric, i.e. all tips
+are sampled cells at present (e.g. from \code{\link[=sim_adb_origin_samp]{sim_adb_origin_samp()}})}
 
-\item{k}{number of sites in the barcode}
+\item{n_sites}{number of sites in the barcode}
 
-\item{edit_rates}{numeric vector of length E, one rate per distinct edit
-outcome}
+\item{edit_rate}{scalar, or length-n_sites vector giving a per-site rate of any edit per time unit}
 
-\item{silencing_rate}{scalar, or length-k vector giving a per-site
-silencing rate}
+\item{edit_probs}{numeric vector of length E, summing to 1: the relative frequencies of the edit outcomes 1,...,E}
 
-\item{edit_height}{time (from origin) at which the editing window ends}
+\item{silencing_rate}{scalar, or length-n_sites vector giving a per-site silencing rate}
 
-\item{edit_duration}{length of the editing window}
+\item{edit_height}{start of the editing window, as a time before the present;
+defaults to the origin time of the tree (\code{tree@phylo$origin}) if available, otherwise to the tree height}
 
-\item{dropout_p}{scalar, or length-k vector giving a per-site dropout
-probability; 0 = no dropout}
+\item{edit_duration}{length of the editing window; sites can be edited
+between \code{edit_height} and \code{edit_height - edit_duration} before the present;
+defaults to \code{edit_height}, i.e. editing from the start of the window until the present}
+
+\item{dropout_prob}{scalar, or length-n_sites vector giving a per-site dropout probability; 0 = no dropout}
 }
 \value{
 a data frame with one row per node in the tree and one column
@@ -38,13 +42,12 @@ per site: \code{node}, \code{site_1}, ..., \code{site_k}, values
 0 = unedited, 1..E = edit outcome, E+1 = silenced/dropout
 }
 \description{
-This code contains adaptations of code from Sophie Seidel's TideTree implementation
-and Antoine Zwaans's implementation with dropout
-The original authors and their respective licenses are retained where applicable.
-source: https://github.com/azwaans/tidetree-dropout/blob/main/src/tidetree/simulation/SimulatedAlignment.java
-
-Simulates a single barcode with k independent sites under the
-Edit-and-Silencing model: each site evolves as a continuous-time Markov
-chain with three fates: staying unedited, transitioning to one of E
-edit outcomes, or being silenced.
+Evolves sequences according to the edit-and-silencing model from TiDeTree:
+Seidel, S., Stadler, T. (2022) TiDeTree: a Bayesian phylogenetic framework to estimate single-cell trees and population dynamic parameters from genetic lineage tracing data. Proc. R. Soc. B, 289 (1986): 20221844. https://doi.org/10.1098/rspb.2022.1844
+}
+\details{
+Each target site evolves as a continuous-time Markov chain with three fates:
+staying unedited, transitioning to one of E edit outcomes, or being silenced.
+Silencing acts at a constant rate at all times; only editing is restricted to the editing window.
+At the end of the process, targets may drop out.
 }
