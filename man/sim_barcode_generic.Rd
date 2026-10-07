@@ -26,8 +26,11 @@ are sampled cells at present (e.g. from \code{\link[=sim_adb_origin_samp]{sim_ad
 \item{n_sites}{number of target sites per barcode}
 
 \item{edit_rate}{scalar or length-\code{n_barcodes} editing rate(s) per barcode
-(a number is constant in time; time-varying rates are described by an internal
-\code{barcode_rate()} with a time profile, relative to the time since the origin)}
+(a number is constant in time). Time- and type-dependent rates are described by an internal
+\code{barcode_rate(base, time, by_type)}: the rate on a branch of type \code{k} at time \code{t} since the origin is
+\code{base * by_type[k + 1] * time$g(t)}. The type of a branch is the \code{type} of the node it ends in
+(the root edge: the root's type), which is exact for trees keeping their type changes
+(\code{collapse = FALSE}) and approximate otherwise.}
 
 \item{edit_probs}{numeric vector of length E, summing to 1: the relative
 frequencies of the edit outcomes. If named, the names are the labels of the
@@ -38,7 +41,8 @@ the outcomes are labelled 1,...,E.}
 against the editing process: the rate at which the entire barcode is silenced
 if \code{sequential = TRUE}, and the rate of each site if \code{sequential = FALSE}}
 
-\item{dropout_prob}{scalar or length-\code{n_barcodes} probability that a
+\item{dropout_prob}{scalar or length-\code{n_barcodes} probability (or \code{barcode_rate()} with \code{by_type} only,
+which may be \code{NA} for types not occurring at tips) that a
 barcode (if \code{sequential = TRUE}) or each site (if \code{sequential = FALSE}) drops out at a tip}
 
 \item{missing_state}{string marking silenced/dropout barcodes (default "-"),

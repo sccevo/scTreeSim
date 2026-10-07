@@ -367,3 +367,103 @@ test_that("decay inside a window follows the integrated rate", {
                              edit_rate = barcode_rate(r, rate_product(rate_window(start, end), rate_exp_decay(h))))
   expect_within(edited_fraction(out), expected, tolerance_4se(expected, 3 * n_rep))
 })
+
+
+# type-dependent rates --------------------------------------------
+
+# the small tree with tip a (node 1) of type 1 and all other nodes of type 0
+typed_small_tree <- function(types = c(1, 0, 0, 0, 0)) {
+  tr <- small_barcode_tree()
+  tr@data$type <- as.integer(types)
+  tr
+}
+tip_states <- function(out, node) {
+  as.character(out[[2]][match(node, out$node)])
+}
+
+test_that("type-specific silencing and dropout only affect branches/tips of that type", {
+  tr <- typed_small_tree()
+  withr::local_seed(30)
+  out <- sim_barcode_generic(tr, n_barcodes = 1, n_sites = 3, edit_rate = 0, edit_probs = 1,
+                             silencing_rate = barcode_rate(1, by_type = c(0, 1e4)))
+  expect_equal(out$barcode_1[out$node == 1], "-_-_-")
+  expect_true(all(out$barcode_1[out$node != 1] == "0_0_0"))
+  out <- sim_barcode_generic(tr, n_barcodes = 1, n_sites = 3, edit_rate = 0, edit_probs = 1,
+                             dropout_prob = barcode_rate(1, by_type = c(0, 1)))
+  expect_equal(out$barcode_1[out$node == 1], "-_-_-")
+  expect_true(all(out$barcode_1[out$node != 1] == "0_0_0"))
+  # per-site dropout in the independent-site model
+  out <- sim_barcode_generic(tr, n_barcodes = 1, n_sites = 3, edit_rate = 0, edit_probs = 1,
+                             dropout_prob = barcode_rate(1, by_type = c(0, 1)), sequential = FALSE)
+  expect_equal(out$barcode_1[out$node == 1], "-_-_-")
+})
+
+test_that("type-specific editing edits only the branches ending in that type; the root edge uses the root's type", {
+  withr::local_seed(31)
+  out <- sim_barcode_generic(typed_small_tree(), n_barcodes = 1, n_sites = 1, edit_rate = barcode_rate(1, by_type = c(0, 1e4)),
+                             edit_probs = c(A = 1))
+  expect_equal(out$barcode_1[out$node == 1], "A")
+  expect_true(all(out$barcode_1[out$node != 1] == "0"))
+  # type 1 at the root: the root edge is edited, so all nodes inherit the edit
+  out <- sim_barcode_generic(typed_small_tree(c(0, 0, 0, 1, 0)), n_barcodes = 1, n_sites = 1,
+                             edit_rate = barcode_rate(1, by_type = c(0, 1e4)), edit_probs = c(A = 1))
+  expect_true(all(out$barcode_1 == "A"))
+})
+
+test_that("base x by_type x time profile give the closed form", {
+  skip_on_cran()
+  n_rep <- 4000
+  tr <- typed_small_tree(rep(1, 5))
+  expected <- 1 - exp(-0.5 * 3 * 0.7)  # window of length 0.7, multiplier 3
+  withr::local_seed(32)
+  out <- sim_barcode_generic(tr, n_barcodes = n_rep, n_sites = 1, edit_probs = 1,
+                             edit_rate = barcode_rate(0.5, rate_window(0.8, 1.5), by_type = c(1, 3)))
+  expect_within(edited_fraction(out), expected, tolerance_4se(expected, 3 * n_rep))
+  # dropout: base x multiplier
+  out <- sim_barcode_generic(tr, n_barcodes = n_rep, n_sites = 1, edit_rate = 0, edit_probs = 1,
+                             dropout_prob = barcode_rate(0.1, by_type = c(1, 3)))
+  expect_within(mean(replicate_states(out)[1:3, ] == "-"), 0.3, tolerance_4se(0.3, 3 * n_rep))
+})
+
+test_that("by_type is validated against the tree", {
+  tr <- typed_small_tree()
+  args <- list(tr, n_barcodes = 1, n_sites = 1, edit_probs = 1)
+  expect_error(do.call(sim_barcode_generic, c(args, list(edit_rate = barcode_rate(1, by_type = 1)))), "entry for every type")
+  expect_error(do.call(sim_barcode_generic, c(args, list(edit_rate = 1, dropout_prob = barcode_rate(0.6, by_type = c(1, 2))))),
+               "exceed 1")
+  expect_error(do.call(sim_barcode_generic, c(args, list(edit_rate = 1, dropout_prob = barcode_rate(0.5, rate_window(0, 1))))),
+               "time profile")
+  expect_error(barcode_rate(1, by_type = -1))
+  untyped <- tr
+  untyped@data <- tibble::tibble(node = 1:5)
+  expect_error(sim_barcode_generic(untyped, 1, 1, edit_rate = barcode_rate(1, by_type = c(1, 1)), edit_probs = 1), "`type`")
+  # a rate without by_type does not need types
+  expect_no_error(sim_barcode_generic(untyped, 1, 1, edit_rate = 1, edit_probs = 1))
+})
+
+test_that("a multi-type tree with kept type changes works end to end", {
+  withr::local_seed(33)
+  tr <- sim_adb_origin_samp(origin_time = 3, scale = c(1, 1), shape = c(1, 1), death_prob = c(0.1, 0.1),
+                            sampling_prob = 0.8, asym_trans_prob = matrix(0, 2, 2), sym_trans_prob = matrix(c(0.7, 0.3, 0.3, 0.7), 2),
+                            collapse = FALSE)
+  out <- sim_barcode_generic(tr, n_barcodes = 2, n_sites = 3, edit_rate = barcode_rate(1, by_type = c(0.2, 2)),
+                             silencing_rate = barcode_rate(0.1, by_type = c(1, 0)), edit_probs = c(A = 0.5, B = 0.5),
+                             dropout_prob = barcode_rate(0.2, by_type = c(1, 0.5)))
+  expect_equal(nrow(out), nrow(tibble::as_tibble(tr)))
+})
+
+test_that("dropout by_type may be NA, or exceed 1 after scaling, for types not at the tips only", {
+  tr <- typed_small_tree(c(1, 0, 0, 0, 2))  # type 2 occurs only at the internal node
+  args <- list(tr, n_barcodes = 1, n_sites = 2, edit_rate = 0, edit_probs = 1)
+  withr::local_seed(34)
+  out <- do.call(sim_barcode_generic, c(args, list(dropout_prob = barcode_rate(0.5, by_type = c(0, 2, NA)))))
+  expect_equal(out$barcode_1[out$node == 1], "-_-")
+  expect_true(all(out$barcode_1[out$node != 1] == "0_0"))
+  expect_no_error(do.call(sim_barcode_generic, c(args, list(dropout_prob = barcode_rate(0.5, by_type = c(0, 1, 9))))))
+  # NA or too large at a tip type, or a too short vector
+  expect_error(do.call(sim_barcode_generic, c(args, list(dropout_prob = barcode_rate(0.5, by_type = c(0, NA, 1))))), "NA")
+  expect_error(do.call(sim_barcode_generic, c(args, list(dropout_prob = barcode_rate(0.5, by_type = c(3, 0, 0))))), "exceed 1")
+  expect_error(do.call(sim_barcode_generic, c(args, list(dropout_prob = barcode_rate(0.5, by_type = c(0, 1))))), "entry for every type")
+  # edit and silencing rates act on every branch, so NA is an error for any used type
+  expect_error(sim_barcode_generic(tr, 1, 2, edit_rate = barcode_rate(1, by_type = c(1, 1, NA)), edit_probs = 1), "NA")
+})

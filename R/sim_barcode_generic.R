@@ -9,8 +9,11 @@
 #' @param n_barcodes number of barcodes per cell
 #' @param n_sites number of target sites per barcode
 #' @param edit_rate scalar or length-`n_barcodes` editing rate(s) per barcode
-#'   (a number is constant in time; time-varying rates are described by an internal
-#'   `barcode_rate()` with a time profile, relative to the time since the origin)
+#'   (a number is constant in time). Time- and type-dependent rates are described by an internal
+#'   `barcode_rate(base, time, by_type)`: the rate on a branch of type `k` at time `t` since the origin is
+#'   `base * by_type[k + 1] * time$g(t)`. The type of a branch is the `type` of the node it ends in
+#'   (the root edge: the root's type), which is exact for trees keeping their type changes
+#'   (`collapse = FALSE`) and approximate otherwise.
 #' @param edit_probs numeric vector of length E, summing to 1: the relative
 #'   frequencies of the edit outcomes. If named, the names are the labels of the
 #'   outcomes written to the barcodes (e.g. `c(A = 0.7, T = 0.3)`); otherwise
@@ -18,7 +21,8 @@
 #' @param silencing_rate scalar or length-`n_barcodes` silencing rate(s) (or `barcode_rate()`), racing
 #'   against the editing process: the rate at which the entire barcode is silenced
 #'   if `sequential = TRUE`, and the rate of each site if `sequential = FALSE`
-#' @param dropout_prob scalar or length-`n_barcodes` probability that a
+#' @param dropout_prob scalar or length-`n_barcodes` probability (or `barcode_rate()` with `by_type` only,
+#'   which may be `NA` for types not occurring at tips) that a
 #'   barcode (if `sequential = TRUE`) or each site (if `sequential = FALSE`) drops out at a tip
 #' @param missing_state string marking silenced/dropout barcodes (default "-"),
 #'   different from the unedited state "0" and the outcome labels
@@ -49,16 +53,17 @@ sim_barcode_generic <- function(tree, n_barcodes, n_sites, edit_rate, edit_probs
   stopifnot(
     is.logical(write_as_string), length(write_as_string) == 1, !is.na(write_as_string),
     is.logical(sequential), length(sequential) == 1, !is.na(sequential),
-    length(n_barcodes) == 1, n_barcodes >= 1, length(n_sites) == 1, n_sites >= 1,
-    is.numeric(dropout_prob), !anyNA(dropout_prob), length(dropout_prob) %in% c(1, n_barcodes),
-    all(dropout_prob >= 0 & dropout_prob <= 1)
+    length(n_barcodes) == 1, n_barcodes >= 1, length(n_sites) == 1, n_sites >= 1
   )
 
   # rates: a number, a per-barcode vector, or a barcode_rate() with a time profile
   edit_rate <- .as_barcode_rate(edit_rate, n_barcodes, "edit_rate")
   silencing_rate <- .as_barcode_rate(silencing_rate, n_barcodes, "silencing_rate")
-  # allow a single shared dropout probability to stand in for all barcodes
-  if (length(dropout_prob) == 1) dropout_prob <- rep(dropout_prob, n_barcodes)
+  dropout_prob <- .as_barcode_rate(dropout_prob, n_barcodes, "dropout_prob")
+  if (dropout_prob$time_given) {
+    stop("`dropout_prob` is a probability at the tips and has no time profile.", call. = FALSE)
+  }
+  if (any(dropout_prob$base > 1)) stop("`dropout_prob` must not exceed 1.", call. = FALSE)
 
   if (!is.numeric(edit_probs) || length(edit_probs) < 1 || anyNA(edit_probs) || any(edit_probs < 0) ||
       !isTRUE(all.equal(sum(edit_probs), 1))) {
@@ -80,6 +85,17 @@ sim_barcode_generic <- function(tree, n_barcodes, n_sites, edit_rate, edit_probs
   root <- tree_df$node[tree_df$parent == tree_df$node]
   stopifnot(length(root) == 1)
 
+  # type of each node (named by node number), if any rate depends on it; the branch ending in a node
+  # has that node's type (the root edge: the root's type)
+  # tips are nodes 1..Ntip (all sampled cells, since the tree is ultrametric)
+  tip_nodes <- seq_along(tree@phylo$tip.label)
+  node_type <- .check_node_types(tree_df, edit_rate, silencing_rate, dropout_prob, tip_nodes)
+  type_of <- function(node) if (is.null(node_type)) 0L else node_type[[as.character(node)]]
+  if (!is.null(node_type) && !is.null(dropout_prob$by_type) &&
+      any(outer(dropout_prob$base, dropout_prob$by_type[unique(node_type[as.character(tip_nodes)]) + 1]) > 1)) {
+    stop("`dropout_prob` times `by_type` must not exceed 1.", call. = FALSE)
+  }
+
   # visit parent before child so state can propagate down the tree; use the
   # topology rather than heights, which tie on zero-length branches
   child_order <- ape::reorder.phylo(tree@phylo, order = "cladewise")$edge[, 2]
@@ -94,9 +110,6 @@ sim_barcode_generic <- function(tree, n_barcodes, n_sites, edit_rate, edit_probs
     warning("`tree@phylo$origin` differs from the tree height plus root edge; the latter is used.", call. = FALSE)
   }
 
-  # tips are nodes 1..Ntip (all sampled cells, since the tree is ultrametric)
-  tip_nodes <- seq_along(tree@phylo$tip.label)
-
   bc_states <- vector("list", n_barcodes)
   for (bc in seq_len(n_barcodes)) {
     # state_at: barcode state per node (silenced sites are marked by `missing_state`,
@@ -108,7 +121,8 @@ sim_barcode_generic <- function(tree, n_barcodes, n_sites, edit_rate, edit_probs
     if (root_edge > 0) {
       state_at[[as.character(root)]] <- .evolve_branch_generic(
         state_at[[as.character(root)]], 0, root_edge,
-        edit_rate$base[bc], edit_rate$time, silencing_rate$base[bc], silencing_rate$time,
+        edit_rate$base[bc] * .type_multiplier(edit_rate, type_of(root)), edit_rate$time,
+        silencing_rate$base[bc] * .type_multiplier(silencing_rate, type_of(root)), silencing_rate$time,
         edit_probs, labels, missing_state, sequential
       )
     }
@@ -121,20 +135,22 @@ sim_barcode_generic <- function(tree, n_barcodes, n_sites, edit_rate, edit_probs
 
       state_at[[as.character(node)]] <- .evolve_branch_generic(
         state_at[[as.character(parent)]], node_time[node] - order_df$branch.length[i], node_time[node],
-        edit_rate$base[bc], edit_rate$time, silencing_rate$base[bc], silencing_rate$time,
+        edit_rate$base[bc] * .type_multiplier(edit_rate, type_of(node)), edit_rate$time,
+        silencing_rate$base[bc] * .type_multiplier(silencing_rate, type_of(node)), silencing_rate$time,
         edit_probs, labels, missing_state, sequential
       )
     }
 
     # apply dropout after simulation: the whole barcode if sequential, otherwise each site
     # (already silenced sites stay silenced)
-    if (dropout_prob[bc] > 0) {
-      for (nd in tip_nodes) {
-        key <- as.character(nd)
+    for (nd in tip_nodes) {
+      key <- as.character(nd)
+      p_drop <- dropout_prob$base[bc] * .type_multiplier(dropout_prob, type_of(nd))
+      if (p_drop > 0) {
         if (sequential) {
-          if (stats::runif(1) < dropout_prob[bc]) state_at[[key]][] <- missing_state
+          if (stats::runif(1) < p_drop) state_at[[key]][] <- missing_state
         } else {
-          state_at[[key]][stats::runif(n_sites) < dropout_prob[bc]] <- missing_state
+          state_at[[key]][stats::runif(n_sites) < p_drop] <- missing_state
         }
       }
     }

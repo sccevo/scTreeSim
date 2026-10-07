@@ -57,15 +57,23 @@ rate_product <- function(...) {
   )
 }
 
-#' Rate with a time profile (internal)
+#' Rate with a time profile and type multipliers (internal)
+#'
+#' The rate on a branch of type `k` at time `t` is `base x by_type[k + 1] x time$g(t)`.
 #'
 #' @param base scalar or length-`n_barcodes` base rate
 #' @param time a `rate_profile`, e.g. [rate_window()]; `NULL` = constant in time
+#' @param by_type non-negative multipliers indexed by type + 1; `NULL` = same for all types.
+#'   Entries may be `NA` for types that are never used (e.g. internal-only types for dropout)
 #' @noRd
-barcode_rate <- function(base, time = NULL) {
-  if (is.null(time)) time <- rate_constant()
-  stopifnot(is.numeric(base), !anyNA(base), all(base >= 0), inherits(time, "rate_profile"))
-  structure(list(base = base, time = time), class = "barcode_rate")
+barcode_rate <- function(base, time = NULL, by_type = NULL) {
+  time_given <- !is.null(time)
+  if (!time_given) time <- rate_constant()
+  stopifnot(
+    is.numeric(base), !anyNA(base), all(base >= 0), inherits(time, "rate_profile"),
+    is.null(by_type) || (is.numeric(by_type) && length(by_type) >= 1 && all(by_type >= 0, na.rm = TRUE))
+  )
+  structure(list(base = base, time = time, time_given = time_given, by_type = by_type), class = "barcode_rate")
 }
 
 # normalise a plain number / vector or a barcode_rate to a barcode_rate
@@ -76,4 +84,38 @@ barcode_rate <- function(base, time = NULL) {
   }
   if (length(x$base) == 1) x$base <- rep(x$base, n_barcodes)
   x
+}
+
+# types of the tree nodes, checked against the `by_type` multipliers of the rates
+# (NULL if none of the rates depends on the type). Edit and silencing act on every branch,
+# dropout only at the tips, so only the tip types need a (non-NA) dropout multiplier.
+.check_node_types <- function(tree_df, edit_rate, silencing_rate, dropout_prob, tip_nodes) {
+  rates <- list(edit_rate = edit_rate, silencing_rate = silencing_rate, dropout_prob = dropout_prob)
+  if (all(vapply(rates, function(r) is.null(r$by_type), logical(1)))) return(NULL)
+  if (!"type" %in% names(tree_df) || anyNA(tree_df$type) || any(tree_df$type < 0) ||
+      any(tree_df$type != round(tree_df$type))) {
+    stop("`by_type` needs a `type` (0, 1, ...) for every node of the tree.", call. = FALSE)
+  }
+  node_type <- stats::setNames(tree_df$type, tree_df$node)
+  used_types <- list(
+    edit_rate = unique(node_type), silencing_rate = unique(node_type),
+    dropout_prob = unique(node_type[as.character(tip_nodes)])
+  )
+  for (name in names(rates)) {
+    by_type <- rates[[name]]$by_type
+    if (is.null(by_type)) next
+    if (length(by_type) <= max(node_type)) {
+      stop("`by_type` of `", name, "` must have an entry for every type 0, ..., ", max(node_type), ".", call. = FALSE)
+    }
+    if (anyNA(by_type[used_types[[name]] + 1])) {
+      stop("`by_type` of `", name, "` is NA for a type that occurs where it is used",
+           if (name == "dropout_prob") " (the tips)." else " (any node).", call. = FALSE)
+    }
+  }
+  node_type
+}
+
+# multiplier of a rate on a branch ending in a node of the given type
+.type_multiplier <- function(rate, type) {
+  if (is.null(rate$by_type)) 1 else rate$by_type[type + 1]
 }
