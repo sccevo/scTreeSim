@@ -2,26 +2,32 @@
 % Please edit documentation in R/sim_barcode_seq.R
 \name{sim_barcode_seq}
 \alias{sim_barcode_seq}
-\title{Simulator of sequentially-edited barcodes}
+\title{Simulator of sequentially-edited lineage barcodes}
 \usage{
 sim_barcode_seq(
   tree,
+  n_barcodes,
   n_sites,
   edit_rate,
+  edit_probs,
   silencing_rate = 0,
   dropout_prob = 0,
-  n_barcodes,
-  chars,
-  char_probs = NULL
+  missing_state = length(edit_probs) + 1L,
+  write_as_string = TRUE
 )
 }
 \arguments{
 \item{tree}{a treedata object of a sampled tree: ultrametric, i.e. all tips
 are sampled cells at present (e.g. from \code{\link[=sim_adb_origin_samp]{sim_adb_origin_samp()}})}
 
+\item{n_barcodes}{number of barcodes per cell}
+
 \item{n_sites}{number of target sites per barcode}
 
 \item{edit_rate}{scalar or length-\code{n_barcodes} editing rate(s) per barcode}
+
+\item{edit_probs}{numeric vector of length E, summing to 1: the relative
+frequencies of the edit outcomes 1,...,E}
 
 \item{silencing_rate}{scalar or length-\code{n_barcodes} rate(s) at which an entire
 barcode is silenced, racing against the editing process}
@@ -29,32 +35,29 @@ barcode is silenced, racing against the editing process}
 \item{dropout_prob}{scalar or length-\code{n_barcodes} probability that a
 barcode drops out at a tip}
 
-\item{n_barcodes}{number of barcodes (tapes) per cell}
+\item{missing_state}{value marking silenced/dropout barcodes,
+defaults to the integer \code{E + 1} (\code{E = length(edit_probs)}).
+Either a whole number or a string (e.g. "-"), different from the unedited
+state 0 and the edit outcomes 1, ..., E.}
 
-\item{chars}{vector of unique characters/state labels to be inserted}
-
-\item{char_probs}{probabilities of inserting each of \code{chars} (same length as
-\code{chars}); \code{NULL} (default) for a uniform draw}
+\item{write_as_string}{if \code{TRUE} (default), each barcode is returned as one
+"_"-separated string per node; if \code{FALSE}, as a node x site data frame}
 }
 \value{
-a data frame with one row per node in the tree and one column
+if \code{write_as_string = TRUE}, a data frame with one row per node in the tree and one column
 per barcode: \code{node}, \code{barcode_1}, ..., \code{barcode_<n_barcodes>},
-each entry a string of \code{n_sites} positions separated by "_"
-(e.g. "0_A_B_0_0"), where "0" = unedited and "-" = silenced/dropout
-(the silenced state; every site reads "-" once a barcode is silenced
-or dropped out)
+each entry a string of \code{n_sites} positions separated by "_" (e.g. "0_2_1_0_0"),
+where 0 = unedited, 1...E = edit outcome and \code{missing_state} = silenced/dropout.
+If \code{write_as_string = FALSE}, a named list (\code{barcode_1}, ...) with one data frame per barcode,
+with one row per node and columns \code{node}, \code{site_1}, ..., \code{site_<n_sites>}.
 }
 \description{
 Based on the SciPhy model:
-Seidel, S., Zwaans, A., Regalado, S. et al. SciPhy: A Bayesian phylogenetic framework using sequential genetic lineage tracing data. Nat Commun 17, 7398 (2026). https://doi.org/10.1038/s41467-026-73377-6
+Seidel, S., Zwaans, A., Regalado, S. et al. (2026) SciPhy: A Bayesian phylogenetic framework using sequential genetic lineage tracing data. Nat Commun, 17, 7398. https://doi.org/10.1038/s41467-026-73377-6
 }
 \details{
-R version of the code has been adapted from Nicola Mulberry's implementation
-source: https://github.com/sccevo/scTreeSim/blob/barcode_simulator/R/typewriter_barcodes.R
-The original authors and their respective licenses are retained where applicable.
-
-Simulates barcodes under a sequential/left-to-right editing process
-(unedited sites are filled in position order at rate \code{edit_rate}, as a
-Poisson process, absorbing once all \code{n_sites} sites are edited), with an
-additional whole-barcode silencing state competing against editing.
+Simulates barcodes under a sequential (left-to-right) editing process
+(unedited sites are filled in position order at rate \code{edit_rate},
+as a Poisson process, absorbing once all \code{n_sites} sites are edited),
+with an additional whole-barcode silencing state competing against editing.
 }

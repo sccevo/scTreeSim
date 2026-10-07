@@ -14,54 +14,35 @@
 #'
 #' @param tree a treedata object of a sampled tree: ultrametric, i.e. all tips
 #'   are sampled cells at present (e.g. from [sim_adb_origin_samp()])
-#' @param n_sites number of sites in the barcode
-#' @param edit_rate scalar, or length-n_sites vector giving a per-site rate of any edit per time unit
+#' @param n_targets number of independent target sites
+#' @param edit_rate scalar, or length-n_targets vector giving a per-target rate of any edit per time unit
 #' @param edit_probs numeric vector of length E, summing to 1: the relative frequencies of the edit outcomes 1,...,E
-#' @param silencing_rate scalar, or length-n_sites vector giving a per-site silencing rate
 #' @param edit_height start of the editing window, as a time before the present;
-#'   defaults to the origin time of the tree (\code{tree@phylo$origin}) if available, otherwise to the tree height
-#' @param edit_duration length of the editing window; sites can be edited
+#'   defaults to the origin of the tree (the root plus the root edge, if any)
+#' @param edit_duration length of the editing window; targets can be edited
 #'   between \code{edit_height} and \code{edit_height - edit_duration} before the present;
 #'   defaults to \code{edit_height}, i.e. editing from the start of the window until the present
-#' @param dropout_prob scalar, or length-n_sites vector giving a per-site dropout probability; 0 = no dropout
+#' @param silencing_rate scalar, or length-n_targets vector giving a per-target silencing rate;
+#'   0 (default) = no silencing
+#' @param dropout_prob scalar, or length-n_targets vector giving a per-target dropout probability; 0 (default) = no dropout
+#' @param missing_state value marking silenced/dropout targets,
+#'   defaults to theninteger `E + 1` (`E = length(edit_probs)`). Either a whole number or a string
+#'   (e.g. "-"), different from the unedited state 0 and the edit outcomes 1,...,E.
+#'   The target columns are integer if `missing_state` is numeric, and character otherwise.
 #'
 #' @return a data frame with one row per node in the tree and one column
-#'   per site: \code{node}, \code{site_1}, ..., \code{site_k}, values
-#'   0 = unedited, 1..E = edit outcome, E+1 = silenced/dropout
+#'   per target: \code{node}, \code{site_1}, ..., \code{site_<n_targets>}, values
+#'   0 = unedited, 1..E = edit outcome, `missing_state` = silenced/dropout
 #' @export
-sim_barcode_nonseq <- function(tree, n_sites, edit_rate, edit_probs, silencing_rate,
-                               edit_height = NULL, edit_duration = NULL, dropout_prob = 0) {
+sim_barcode_nonseq <- function(tree, n_targets, edit_rate, edit_probs,
+                               edit_height = NULL, edit_duration = NULL,
+                               silencing_rate = 0, dropout_prob = 0,
+                               missing_state = length(edit_probs) + 1L) {
 
   stopifnot(methods::is(tree, "treedata"))
   if (!ape::is.ultrametric(tree@phylo)) {
     stop("`tree` must be ultrametric (a sampled tree with all tips at present).", call. = FALSE)
   }
-  # default editing window: from the origin (or the root) until the present
-  if (is.null(edit_height)) {
-    edit_height <- if (!is.null(tree@phylo$origin)) tree@phylo$origin else max(ape::node.depth.edgelength(tree@phylo))
-  }
-  if (is.null(edit_duration)) edit_duration <- edit_height
-  stopifnot(
-    is.numeric(n_sites), length(n_sites) == 1, n_sites >= 1, n_sites == round(n_sites),
-    is.numeric(edit_rate), !anyNA(edit_rate), all(edit_rate >= 0),
-    is.numeric(edit_probs), length(edit_probs) >= 1, !anyNA(edit_probs), all(edit_probs >= 0),
-    isTRUE(all.equal(sum(edit_probs), 1)),
-    is.numeric(silencing_rate), !anyNA(silencing_rate), all(silencing_rate >= 0),
-    is.numeric(edit_height), length(edit_height) == 1, !is.na(edit_height),
-    is.numeric(edit_duration), length(edit_duration) == 1, !is.na(edit_duration), edit_duration >= 0,
-    is.numeric(dropout_prob), !anyNA(dropout_prob), all(dropout_prob >= 0 & dropout_prob <= 1)
-  )
-  n_sites <- as.integer(n_sites)
-  E <- length(edit_probs)
-  nstates <- E + 2L
-  silenced_state <- nstates
-
-  # allow a single shared rate to stand in for all n_sites sites
-  if (length(edit_rate) == 1) edit_rate <- rep(edit_rate, n_sites)
-  if (length(silencing_rate) == 1) silencing_rate <- rep(silencing_rate, n_sites)
-  if (length(dropout_prob) == 1) dropout_prob <- rep(dropout_prob, n_sites)
-  stopifnot(length(edit_rate) == n_sites, length(silencing_rate) == n_sites, length(dropout_prob) == n_sites)
-
   tree_df <- tree %>% tibble::as_tibble() %>% as.data.frame()
   root <- tree_df$node[tree_df$parent == tree_df$node]
   stopifnot(length(root) == 1)
@@ -78,19 +59,50 @@ sim_barcode_nonseq <- function(tree, n_sites, edit_rate, edit_probs, silencing_r
 
   root_edge <- tree@phylo$root.edge
   origin_height <- if (!is.null(root_edge)) heights[root] + root_edge else heights[root]
+  if (!is.null(tree@phylo$origin) && !isTRUE(all.equal(tree@phylo$origin, origin_height))) {
+    warning("`tree@phylo$origin` differs from the tree height plus root edge; the latter is used.", call. = FALSE)
+  }
+
+  # default editing window: from the origin (or the root) until the present
+  if (is.null(edit_height)) edit_height <- origin_height
+  if (is.null(edit_duration)) edit_duration <- edit_height
+  stopifnot(
+    n_targets >= 1,
+    length(edit_rate) %in% c(1, n_targets), all(edit_rate >= 0),
+    length(silencing_rate) %in% c(1, n_targets), all(silencing_rate >= 0),
+    length(dropout_prob) %in% c(1, n_targets), all(dropout_prob >= 0 & dropout_prob <= 1),
+    all(edit_probs >= 0),
+    length(edit_height) == 1, length(edit_duration) == 1, edit_duration >= 0
+  )
+  if (!isTRUE(all.equal(sum(edit_probs), 1))) {
+    stop("`edit_probs` must sum to 1.", call. = FALSE)
+  }
+  if (length(missing_state) != 1 || is.na(missing_state) ||
+      as.character(missing_state) %in% as.character(0:length(edit_probs))) {
+    stop("`missing_state` must be a single value different from 0 and the edit outcomes 1,...,E.", call. = FALSE)
+  }
+  n_targets <- as.integer(n_targets)
+  E <- length(edit_probs)
+  nstates <- E + 2L
+  silenced_state <- nstates
+
+  # allow a single shared rate to stand in for all n_targets sites
+  if (length(edit_rate) == 1) edit_rate <- rep(edit_rate, n_targets)
+  if (length(silencing_rate) == 1) silencing_rate <- rep(silencing_rate, n_targets)
+  if (length(dropout_prob) == 1) dropout_prob <- rep(dropout_prob, n_targets)
 
   # tips are nodes 1..Ntip (all sampled cells, since the tree is ultrametric)
   tip_nodes <- seq_along(tree@phylo$tip.label)
 
-  # state_at: n_sites-length integer state vector per node
+  # state_at: n_targets-length integer state vector per node
   # 1-indexed internally
   # converted back to 0-indexed only in the final output
   state_at <- list()
-  state_at[[as.character(root)]] <- rep(1L, n_sites)
+  state_at[[as.character(root)]] <- rep(1L, n_targets)
 
   # evolve along the root/origin edge first, if the tree has one
   if (!is.null(root_edge) && root_edge > 0) {
-    state_at[[as.character(root)]] <- .evolve_branch(
+    state_at[[as.character(root)]] <- .evolve_branch_nonseq(
       state_at[[as.character(root)]], origin_height, heights[root],
       edit_rate, edit_probs, silencing_rate, edit_height, edit_duration
     )
@@ -101,7 +113,7 @@ sim_barcode_nonseq <- function(tree, n_sites, edit_rate, edit_probs, silencing_r
     node <- order_df$node[i]
     if (node == root) next
     parent <- order_df$parent[i]
-    state_at[[as.character(node)]] <- .evolve_branch(
+    state_at[[as.character(node)]] <- .evolve_branch_nonseq(
       state_at[[as.character(parent)]], heights[parent], heights[node],
       edit_rate, edit_probs, silencing_rate, edit_height, edit_duration
     )
@@ -110,13 +122,25 @@ sim_barcode_nonseq <- function(tree, n_sites, edit_rate, edit_probs, silencing_r
   # dropout applied after simulation
   for (nd in tip_nodes) {
     key <- as.character(nd)
-    mask <- stats::runif(n_sites) < dropout_prob
+    mask <- stats::runif(n_targets) < dropout_prob
     state_at[[key]][mask] <- silenced_state
   }
 
+  # nodes x targets matrix, 0-indexed (explicit matrix(): vapply drops to a vector when n_targets = 1)
+  state_mat <- matrix(
+    unlist(lapply(tree_df$node, function(nd) state_at[[as.character(nd)]] - 1L)),
+    ncol = n_targets, byrow = TRUE
+  )
+  # the internal silenced code E + 1 is relabelled to missing_state
+  if (is.character(missing_state)) {
+    state_mat[] <- as.character(state_mat)
+    state_mat[state_mat == as.character(E + 1L)] <- missing_state
+  } else {
+    state_mat[state_mat == E + 1L] <- as.integer(missing_state)
+  }
+
   out <- data.frame(node = tree_df$node)
-  state_mat <- t(vapply(tree_df$node, function(nd) state_at[[as.character(nd)]] - 1L, integer(n_sites)))
-  for (site in seq_len(n_sites)) out[[paste0("site_", site)]] <- state_mat[, site]
+  for (site in seq_len(n_targets)) out[[paste0("site_", site)]] <- state_mat[, site]
   out
 }
 
@@ -154,7 +178,7 @@ sim_barcode_nonseq <- function(tree, n_sites, edit_rate, edit_probs, silencing_r
 # Draw the next state for each site independently, using that site's own
 # edit and silencing rates (edit_probs are shared across sites).
 # Sites sharing both rates share a transition matrix, which is built once.
-.evolve_segment <- function(state, edit_rate, edit_probs, silencing_rate, delta, in_window) {
+.evolve_segment_nonseq <- function(state, edit_rate, edit_probs, silencing_rate, delta, in_window) {
   if (delta <= 0) return(state)
   new_state <- state
   rates <- unique(data.frame(edit = edit_rate, silencing = silencing_rate))
@@ -170,9 +194,9 @@ sim_barcode_nonseq <- function(tree, n_sites, edit_rate, edit_probs, silencing_r
 
 
 # Split one branch at the editing-window boundaries so every segment
-# passed to .evolve_segment is either fully inside or fully outside the window,
+# passed to .evolve_segment_nonseq is either fully inside or fully outside the window,
 # then evolve through each segment in turn.
-.evolve_branch <- function(parent_state, parent_height, child_height,
+.evolve_branch_nonseq <- function(parent_state, parent_height, child_height,
                            edit_rate, edit_probs, silencing_rate, edit_height, edit_duration) {
   window_top <- edit_height
   window_bot <- edit_height - edit_duration
@@ -185,7 +209,7 @@ sim_barcode_nonseq <- function(tree, n_sites, edit_rate, edit_probs, silencing_r
     seg_top <- bounds[i]; seg_bot <- bounds[i + 1]
     delta <- seg_top - seg_bot
     in_window <- (seg_bot >= window_bot) && (seg_bot < window_top)
-    state <- .evolve_segment(state, edit_rate, edit_probs, silencing_rate, delta, in_window)
+    state <- .evolve_segment_nonseq(state, edit_rate, edit_probs, silencing_rate, delta, in_window)
   }
   state
 }

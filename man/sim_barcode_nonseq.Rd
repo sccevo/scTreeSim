@@ -6,40 +6,47 @@
 \usage{
 sim_barcode_nonseq(
   tree,
-  n_sites,
+  n_targets,
   edit_rate,
   edit_probs,
-  silencing_rate,
   edit_height = NULL,
   edit_duration = NULL,
-  dropout_prob = 0
+  silencing_rate = 0,
+  dropout_prob = 0,
+  missing_state = length(edit_probs) + 1L
 )
 }
 \arguments{
 \item{tree}{a treedata object of a sampled tree: ultrametric, i.e. all tips
 are sampled cells at present (e.g. from \code{\link[=sim_adb_origin_samp]{sim_adb_origin_samp()}})}
 
-\item{n_sites}{number of sites in the barcode}
+\item{n_targets}{number of independent target sites}
 
-\item{edit_rate}{scalar, or length-n_sites vector giving a per-site rate of any edit per time unit}
+\item{edit_rate}{scalar, or length-n_targets vector giving a per-target rate of any edit per time unit}
 
 \item{edit_probs}{numeric vector of length E, summing to 1: the relative frequencies of the edit outcomes 1,...,E}
 
-\item{silencing_rate}{scalar, or length-n_sites vector giving a per-site silencing rate}
-
 \item{edit_height}{start of the editing window, as a time before the present;
-defaults to the origin time of the tree (\code{tree@phylo$origin}) if available, otherwise to the tree height}
+defaults to the origin of the tree (the root plus the root edge, if any)}
 
-\item{edit_duration}{length of the editing window; sites can be edited
+\item{edit_duration}{length of the editing window; targets can be edited
 between \code{edit_height} and \code{edit_height - edit_duration} before the present;
 defaults to \code{edit_height}, i.e. editing from the start of the window until the present}
 
-\item{dropout_prob}{scalar, or length-n_sites vector giving a per-site dropout probability; 0 = no dropout}
+\item{silencing_rate}{scalar, or length-n_targets vector giving a per-target silencing rate;
+0 (default) = no silencing}
+
+\item{dropout_prob}{scalar, or length-n_targets vector giving a per-target dropout probability; 0 (default) = no dropout}
+
+\item{missing_state}{value marking silenced/dropout targets,
+defaults to theninteger \code{E + 1} (\code{E = length(edit_probs)}). Either a whole number or a string
+(e.g. "-"), different from the unedited state 0 and the edit outcomes 1,...,E.
+The target columns are integer if \code{missing_state} is numeric, and character otherwise.}
 }
 \value{
 a data frame with one row per node in the tree and one column
-per site: \code{node}, \code{site_1}, ..., \code{site_k}, values
-0 = unedited, 1..E = edit outcome, E+1 = silenced/dropout
+per target: \code{node}, \code{site_1}, ..., \code{site_<n_targets>}, values
+0 = unedited, 1..E = edit outcome, \code{missing_state} = silenced/dropout
 }
 \description{
 Evolves sequences according to the edit-and-silencing model from TiDeTree:
