@@ -26,22 +26,19 @@ are sampled cells at present (e.g. from \code{\link[=sim_adb_origin_samp]{sim_ad
 \item{n_sites}{number of target sites per barcode}
 
 \item{edit_rate}{scalar or length-\code{n_barcodes} editing rate(s) per barcode
-(a number is constant in time). Time- and type-dependent rates are described by an internal
-\code{barcode_rate(base, time, by_type)}: the rate on a branch of type \code{k} at time \code{t} since the origin is
-\code{base * by_type[k + 1] * time$g(t)}. The type of a branch is the \code{type} of the node it ends in
-(the root edge: the root's type), which is exact for trees keeping their type changes
-(\code{collapse = FALSE}) and approximate otherwise.}
+(a number is constant in time). Time- and type-dependent rates are described by
+\code{\link[=barcode_rate]{barcode_rate()}}, with time profiles from \link{rate_profiles}.}
 
 \item{edit_probs}{numeric vector of length E, summing to 1: the relative
 frequencies of the edit outcomes. If named, the names are the labels of the
 outcomes written to the barcodes (e.g. \code{c(A = 0.7, T = 0.3)}); otherwise
 the outcomes are labelled 1,...,E.}
 
-\item{silencing_rate}{scalar or length-\code{n_barcodes} silencing rate(s) (or \code{barcode_rate()}), racing
+\item{silencing_rate}{scalar or length-\code{n_barcodes} silencing rate(s) (or \code{\link[=barcode_rate]{barcode_rate()}}), racing
 against the editing process: the rate at which the entire barcode is silenced
 if \code{sequential = TRUE}, and the rate of each site if \code{sequential = FALSE}}
 
-\item{dropout_prob}{scalar or length-\code{n_barcodes} probability (or \code{barcode_rate()} with \code{by_type} only,
+\item{dropout_prob}{scalar or length-\code{n_barcodes} probability (or \code{\link[=barcode_rate]{barcode_rate()}} with \code{by_type} only,
 which may be \code{NA} for types not occurring at tips) that a
 barcode (if \code{sequential = TRUE}) or each site (if \code{sequential = FALSE}) drops out at a tip}
 
@@ -68,3 +65,11 @@ with one row per node and (character) columns \code{node}, \code{site_1}, ..., \
 \description{
 Simulator of generic lineage barcodes
 }
+\seealso{
+\code{\link[=barcode_rate]{barcode_rate()}} and \link{rate_profiles} for time- and type-dependent rates
+
+Other barcode simulators:
+\code{\link[=sim_barcode_nonseq]{sim_barcode_nonseq()}},
+\code{\link[=sim_barcode_seq]{sim_barcode_seq()}}
+}
+\concept{barcode simulators}

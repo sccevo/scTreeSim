@@ -9,19 +9,16 @@
 #' @param n_barcodes number of barcodes per cell
 #' @param n_sites number of target sites per barcode
 #' @param edit_rate scalar or length-`n_barcodes` editing rate(s) per barcode
-#'   (a number is constant in time). Time- and type-dependent rates are described by an internal
-#'   `barcode_rate(base, time, by_type)`: the rate on a branch of type `k` at time `t` since the origin is
-#'   `base * by_type[k + 1] * time$g(t)`. The type of a branch is the `type` of the node it ends in
-#'   (the root edge: the root's type), which is exact for trees keeping their type changes
-#'   (`collapse = FALSE`) and approximate otherwise.
+#'   (a number is constant in time). Time- and type-dependent rates are described by
+#'   [barcode_rate()], with time profiles from [rate_profiles].
 #' @param edit_probs numeric vector of length E, summing to 1: the relative
 #'   frequencies of the edit outcomes. If named, the names are the labels of the
 #'   outcomes written to the barcodes (e.g. `c(A = 0.7, T = 0.3)`); otherwise
 #'   the outcomes are labelled 1,...,E.
-#' @param silencing_rate scalar or length-`n_barcodes` silencing rate(s) (or `barcode_rate()`), racing
+#' @param silencing_rate scalar or length-`n_barcodes` silencing rate(s) (or [barcode_rate()]), racing
 #'   against the editing process: the rate at which the entire barcode is silenced
 #'   if `sequential = TRUE`, and the rate of each site if `sequential = FALSE`
-#' @param dropout_prob scalar or length-`n_barcodes` probability (or `barcode_rate()` with `by_type` only,
+#' @param dropout_prob scalar or length-`n_barcodes` probability (or [barcode_rate()] with `by_type` only,
 #'   which may be `NA` for types not occurring at tips) that a
 #'   barcode (if `sequential = TRUE`) or each site (if `sequential = FALSE`) drops out at a tip
 #' @param missing_state string marking silenced/dropout barcodes (default "-"),
@@ -40,6 +37,8 @@
 #'   (every site reads `missing_state` once a barcode is silenced or dropped out).
 #'   If `write_as_string = FALSE`, a named list (\code{barcode_1}, ...) with one data frame per barcode,
 #'   with one row per node and (character) columns \code{node}, \code{site_1}, ..., \code{site_<n_sites>}.
+#' @family barcode simulators
+#' @seealso [barcode_rate()] and [rate_profiles] for time- and type-dependent rates
 #' @export
 sim_barcode_generic <- function(tree, n_barcodes, n_sites, edit_rate, edit_probs,
                                 silencing_rate = 0, dropout_prob = 0, missing_state = "-", write_as_string = TRUE,

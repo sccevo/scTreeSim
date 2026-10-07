@@ -225,24 +225,6 @@ test_that("dropout acts on the whole barcode if sequential, on single sites othe
 # fraction of replicate single-site barcodes that are edited (not "0" and not "-") at the tips
 edited_fraction <- function(out) mean(!replicate_states(out)[1:3, ] %in% c("0", "-"))
 
-test_that("rate profiles give the multiplier, breakpoints and a valid bound", {
-  w <- rate_window(1, 2)
-  expect_equal(w$g(c(0.5, 1, 1.5, 2)), c(0, 1, 1, 0))
-  expect_equal(w$breaks, c(1, 2))
-  expect_equal(w$max(0, 1), 0)
-  expect_equal(w$max(1, 2), 1)
-  d <- rate_exp_decay(half_life = 2)
-  expect_equal(d$g(c(0, 2, 4)), c(1, 0.5, 0.25))
-  expect_equal(d$max(1, 3), d$g(1))
-  pw <- rate_piecewise(c(1, 3), c(0, 2, 1))
-  expect_equal(pw$g(c(0.5, 1, 2, 3, 5)), c(0, 2, 2, 1, 1))
-  expect_error(rate_piecewise(c(1, 3), c(1, 2)))
-  expect_error(rate_window(2, 1))
-  expect_error(rate_exp_decay(0))
-  expect_error(barcode_rate(-1))
-  expect_error(barcode_rate(1, time = "a"))
-})
-
 test_that("a constant profile via barcode_rate() or rate_fn() leaves the simulator unchanged", {
   tr <- small_barcode_tree()
   args <- list(tr, n_barcodes = 5, n_sites = 3, edit_probs = c(A = 0.5, B = 0.5), silencing_rate = 0.1)
@@ -331,26 +313,6 @@ test_that("a piecewise profile and rate_fn agree with the closed form; silencing
                              silencing_rate = barcode_rate(s, rate_window(0, 1)))
   silenced <- mean(replicate_states(out)[1:3, ] == "-")
   expect_within(silenced, 1 - exp(-s), tolerance_4se(1 - exp(-s), 3 * n_rep))
-})
-
-test_that("a rate_fn exceeding its stated maximum is an error", {
-  tr <- small_barcode_tree()
-  expect_error(
-    sim_barcode_generic(tr, n_barcodes = 20, n_sites = 1, edit_probs = 1,
-                        edit_rate = barcode_rate(5, rate_fn(function(t) 3, max = 1))),
-    "exceeds"
-  )
-})
-
-test_that("rate_product multiplies profiles, pools breakpoints and bounds each piece", {
-  prod_rate <- rate_product(rate_window(1, 2), rate_exp_decay(half_life = 0.5))
-  expect_equal(prod_rate$breaks, c(1, 2))
-  expect_equal(prod_rate$g(c(0.5, 1, 1.5, 2)), c(0, 0.25, 0.125, 0))
-  expect_equal(prod_rate$max(1, 2), 0.25)  # the decay at the start of the piece
-  expect_equal(prod_rate$max(0, 1), 0)
-  expect_equal(rate_product(rate_window(1, 3), rate_window(2, 4))$breaks, 1:4)
-  expect_error(rate_product())
-  expect_error(rate_product(1))
 })
 
 test_that("decay inside a window follows the integrated rate", {

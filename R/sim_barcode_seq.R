@@ -36,6 +36,7 @@
 #'   where 0 = unedited, 1...E = edit outcome and `missing_state` = silenced/dropout.
 #'   If `write_as_string = FALSE`, a named list (\code{barcode_1}, ...) with one data frame per barcode, 
 #'   with one row per node and columns \code{node}, \code{site_1}, ..., \code{site_<n_sites>}.
+#' @family barcode simulators
 #' @export
 sim_barcode_seq <- function(tree, n_barcodes, n_sites, edit_rate, edit_probs,
                             silencing_rate = 0, dropout_prob = 0, missing_state = length(edit_probs) + 1L, write_as_string = TRUE) {

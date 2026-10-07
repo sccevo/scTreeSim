@@ -58,3 +58,9 @@ staying unedited, transitioning to one of E edit outcomes, or being silenced.
 Silencing acts at a constant rate at all times; only editing is restricted to the editing window.
 At the end of the process, targets may drop out.
 }
+\seealso{
+Other barcode simulators:
+\code{\link[=sim_barcode_generic]{sim_barcode_generic()}},
+\code{\link[=sim_barcode_seq]{sim_barcode_seq()}}
+}
+\concept{barcode simulators}

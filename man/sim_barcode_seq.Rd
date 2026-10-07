@@ -61,3 +61,9 @@ Simulates barcodes under a sequential (left-to-right) editing process
 as a Poisson process, absorbing once all \code{n_sites} sites are edited),
 with an additional whole-barcode silencing state competing against editing.
 }
+\seealso{
+Other barcode simulators:
+\code{\link[=sim_barcode_generic]{sim_barcode_generic()}},
+\code{\link[=sim_barcode_nonseq]{sim_barcode_nonseq()}}
+}
+\concept{barcode simulators}

@@ -33,6 +33,7 @@
 #' @return a data frame with one row per node in the tree and one column
 #'   per target: \code{node}, \code{site_1}, ..., \code{site_<n_targets>}, values
 #'   0 = unedited, 1..E = edit outcome, `missing_state` = silenced/dropout
+#' @family barcode simulators
 #' @export
 sim_barcode_nonseq <- function(tree, n_targets, edit_rate, edit_probs,
                                edit_height = NULL, edit_duration = NULL,
