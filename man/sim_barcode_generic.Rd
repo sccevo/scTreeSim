@@ -25,14 +25,16 @@ are sampled cells at present (e.g. from \code{\link[=sim_adb_origin_samp]{sim_ad
 
 \item{n_sites}{number of target sites per barcode}
 
-\item{edit_rate}{scalar or length-\code{n_barcodes} editing rate(s) per barcode}
+\item{edit_rate}{scalar or length-\code{n_barcodes} editing rate(s) per barcode
+(a number is constant in time; time-varying rates are described by an internal
+\code{barcode_rate()} with a time profile, relative to the time since the origin)}
 
 \item{edit_probs}{numeric vector of length E, summing to 1: the relative
 frequencies of the edit outcomes. If named, the names are the labels of the
 outcomes written to the barcodes (e.g. \code{c(A = 0.7, T = 0.3)}); otherwise
 the outcomes are labelled 1,...,E.}
 
-\item{silencing_rate}{scalar or length-\code{n_barcodes} silencing rate(s), racing
+\item{silencing_rate}{scalar or length-\code{n_barcodes} silencing rate(s) (or \code{barcode_rate()}), racing
 against the editing process: the rate at which the entire barcode is silenced
 if \code{sequential = TRUE}, and the rate of each site if \code{sequential = FALSE}}
 

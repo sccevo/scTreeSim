@@ -9,11 +9,13 @@
 #' @param n_barcodes number of barcodes per cell
 #' @param n_sites number of target sites per barcode
 #' @param edit_rate scalar or length-`n_barcodes` editing rate(s) per barcode
+#'   (a number is constant in time; time-varying rates are described by an internal
+#'   `barcode_rate()` with a time profile, relative to the time since the origin)
 #' @param edit_probs numeric vector of length E, summing to 1: the relative
 #'   frequencies of the edit outcomes. If named, the names are the labels of the
 #'   outcomes written to the barcodes (e.g. `c(A = 0.7, T = 0.3)`); otherwise
 #'   the outcomes are labelled 1,...,E.
-#' @param silencing_rate scalar or length-`n_barcodes` silencing rate(s), racing
+#' @param silencing_rate scalar or length-`n_barcodes` silencing rate(s) (or `barcode_rate()`), racing
 #'   against the editing process: the rate at which the entire barcode is silenced
 #'   if `sequential = TRUE`, and the rate of each site if `sequential = FALSE`
 #' @param dropout_prob scalar or length-`n_barcodes` probability that a
@@ -48,16 +50,14 @@ sim_barcode_generic <- function(tree, n_barcodes, n_sites, edit_rate, edit_probs
     is.logical(write_as_string), length(write_as_string) == 1, !is.na(write_as_string),
     is.logical(sequential), length(sequential) == 1, !is.na(sequential),
     length(n_barcodes) == 1, n_barcodes >= 1, length(n_sites) == 1, n_sites >= 1,
-    is.numeric(edit_rate), !anyNA(edit_rate), length(edit_rate) %in% c(1, n_barcodes), all(edit_rate >= 0),
-    is.numeric(silencing_rate), !anyNA(silencing_rate), length(silencing_rate) %in% c(1, n_barcodes),
-    all(silencing_rate >= 0),
     is.numeric(dropout_prob), !anyNA(dropout_prob), length(dropout_prob) %in% c(1, n_barcodes),
     all(dropout_prob >= 0 & dropout_prob <= 1)
   )
 
-  # allow a single shared rate to stand in for all barcodes
-  if (length(edit_rate) == 1) edit_rate <- rep(edit_rate, n_barcodes)
-  if (length(silencing_rate) == 1) silencing_rate <- rep(silencing_rate, n_barcodes)
+  # rates: a number, a per-barcode vector, or a barcode_rate() with a time profile
+  edit_rate <- .as_barcode_rate(edit_rate, n_barcodes, "edit_rate")
+  silencing_rate <- .as_barcode_rate(silencing_rate, n_barcodes, "silencing_rate")
+  # allow a single shared dropout probability to stand in for all barcodes
   if (length(dropout_prob) == 1) dropout_prob <- rep(dropout_prob, n_barcodes)
 
   if (!is.numeric(edit_probs) || length(edit_probs) < 1 || anyNA(edit_probs) || any(edit_probs < 0) ||
@@ -87,7 +87,9 @@ sim_barcode_generic <- function(tree, n_barcodes, n_sites, edit_rate, edit_probs
 
   # branch lengths come from the treedata; the root edge from the phylo object
   root_edge <- if (is.null(tree@phylo$root.edge)) 0 else tree@phylo$root.edge
-  origin <- max(ape::node.depth.edgelength(tree@phylo)) + root_edge
+  # time since the origin of each node (indexed by node number)
+  node_time <- ape::node.depth.edgelength(tree@phylo) + root_edge
+  origin <- max(node_time)
   if (!is.null(tree@phylo$origin) && !isTRUE(all.equal(tree@phylo$origin, origin))) {
     warning("`tree@phylo$origin` differs from the tree height plus root edge; the latter is used.", call. = FALSE)
   }
@@ -105,7 +107,8 @@ sim_barcode_generic <- function(tree, n_barcodes, n_sites, edit_rate, edit_probs
     # evolve along the root/origin edge first, if the tree has one
     if (root_edge > 0) {
       state_at[[as.character(root)]] <- .evolve_branch_generic(
-        state_at[[as.character(root)]], root_edge, edit_rate[bc], silencing_rate[bc],
+        state_at[[as.character(root)]], 0, root_edge,
+        edit_rate$base[bc], edit_rate$time, silencing_rate$base[bc], silencing_rate$time,
         edit_probs, labels, missing_state, sequential
       )
     }
@@ -117,7 +120,8 @@ sim_barcode_generic <- function(tree, n_barcodes, n_sites, edit_rate, edit_probs
       parent <- order_df$parent[i]
 
       state_at[[as.character(node)]] <- .evolve_branch_generic(
-        state_at[[as.character(parent)]], order_df$branch.length[i], edit_rate[bc], silencing_rate[bc],
+        state_at[[as.character(parent)]], node_time[node] - order_df$branch.length[i], node_time[node],
+        edit_rate$base[bc], edit_rate$time, silencing_rate$base[bc], silencing_rate$time,
         edit_probs, labels, missing_state, sequential
       )
     }
@@ -160,51 +164,73 @@ sim_barcode_generic <- function(tree, n_barcodes, n_sites, edit_rate, edit_probs
 }
 
 
-# Evolve one barcode copy along one branch with exponential waiting times.
-# At each event, draw whether it is an edit or silencing.
+# Evolve one barcode copy along one branch, from time t0 to t1 since the origin,
+# with exponential waiting times. At each event, draw whether it is an edit or silencing.
 # sequential: one edit clock (leftmost unedited site) and one whole-barcode silencing clock;
 # otherwise: each unedited site has its own edit clock and each unsilenced site its own silencing clock.
 # Silenced sites are marked by `missing_state` and never change again.
-.evolve_branch_generic <- function(parent_state, branch_length, edit_rate, silencing_rate,
+# Time-varying rates (rate = base x profile$g(t)) are simulated by thinning:
+# the branch is cut at the profile breakpoints, candidate events are drawn with the bound
+# base x profile$max on each piece, and accepted with probability g(t) / max.
+.evolve_branch_generic <- function(parent_state, t0, t1, edit_rate, edit_profile,
+                                   silencing_rate, silencing_profile,
                                    edit_probs, labels, missing_state, sequential) {
   state <- parent_state
 
-  t <- 0
+  cuts <- sort(unique(c(t0, t1, edit_profile$breaks, silencing_profile$breaks)))
+  cuts <- cuts[cuts >= t0 & cuts <= t1]
 
-  repeat {
-    free <- which(state == "0")
-    alive <- which(state != missing_state)
+  for (k in seq_len(length(cuts) - 1)) {
+    piece_start <- cuts[k]
+    piece_end <- cuts[k + 1]
+    edit_max <- edit_profile$max(piece_start, piece_end)
+    silencing_max <- silencing_profile$max(piece_start, piece_end)
+    t <- piece_start
 
-    # no time left on this branch, or nothing can happen any more
-    if (length(alive) == 0) break
+    repeat {
+      free <- which(state == "0")
+      alive <- which(state != missing_state)
 
-    # rates of the competing events
-    if (sequential) {
-      total_edit_rate <- if (length(free) > 0) edit_rate else 0
-      total_silencing_rate <- silencing_rate
-    } else {
-      total_edit_rate <- edit_rate * length(free)
-      total_silencing_rate <- silencing_rate * length(alive)
-    }
-    event_rate <- total_edit_rate + total_silencing_rate
-    if (event_rate <= 0) break  # no editing left to do and no silencing possible
+      # nothing can happen any more
+      if (length(alive) == 0) break
 
-    # draw time to the next event (edit or silencing) on the combined clock
-    t <- t + stats::rexp(1, event_rate)
-    if (t > branch_length) break  # no more events fit in this branch
-
-    # which of the two competing events fired, weighted by relative rate
-    if (stats::runif(1) < total_silencing_rate / event_rate) {
+      # bounds of the rates of the competing events
       if (sequential) {
-        state[] <- missing_state
+        total_edit_rate <- if (length(free) > 0) edit_rate * edit_max else 0
+        total_silencing_rate <- silencing_rate * silencing_max
       } else {
-        # (index via sample.int: sample() on a single number would draw from 1:n)
-        state[alive[sample.int(length(alive), 1)]] <- missing_state
+        total_edit_rate <- edit_rate * edit_max * length(free)
+        total_silencing_rate <- silencing_rate * silencing_max * length(alive)
       }
-    } else {
-      # edit event: the leftmost still-unedited site, or a random one if not sequential
-      pos <- if (sequential) free[1] else free[sample.int(length(free), 1)]
-      state[pos] <- labels[sample.int(length(labels), size = 1, prob = edit_probs)]
+      event_rate <- total_edit_rate + total_silencing_rate
+      if (event_rate <= 0) break  # no editing left to do and no silencing possible
+
+      # draw time to the next candidate event (edit or silencing) on the combined clock
+      t <- t + stats::rexp(1, event_rate)
+      if (t >= piece_end) break  # no more events fit in this piece
+
+      # which of the two competing events fired, weighted by relative rate
+      is_silencing <- stats::runif(1) < total_silencing_rate / event_rate
+
+      # thinning: accept with probability g(t) / max
+      accept <- if (is_silencing) silencing_profile$g(t) / silencing_max else edit_profile$g(t) / edit_max
+      if (accept > 1 + 1e-8) {
+        stop("A rate profile exceeds its stated maximum at time ", format(t), ".", call. = FALSE)
+      }
+      if (accept < 1 && stats::runif(1) >= accept) next
+
+      if (is_silencing) {
+        if (sequential) {
+          state[] <- missing_state
+        } else {
+          # (index via sample.int: sample() on a single number would draw from 1:n)
+          state[alive[sample.int(length(alive), 1)]] <- missing_state
+        }
+      } else {
+        # edit event: the leftmost still-unedited site, or a random one if not sequential
+        pos <- if (sequential) free[1] else free[sample.int(length(free), 1)]
+        state[pos] <- labels[sample.int(length(labels), size = 1, prob = edit_probs)]
+      }
     }
   }
 
