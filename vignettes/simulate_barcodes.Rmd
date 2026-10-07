@@ -1,0 +1,230 @@
+---
+title: "Simulating Lineage Barcodes"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Simulating Lineage Barcodes}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 9,
+  fig.height = 5,
+  dpi = 300,
+  out.width = "100%",
+  eval = requireNamespace("ggtree", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE)
+)
+```
+
+```{r setup, message=FALSE}
+library(scTreeSim)
+library(ggtree)
+library(ggplot2)
+source("helpers.R")  # plotting helpers of the vignettes: plot_tree(), plot_barcodes() and a palette
+```
+
+Lineage barcodes are edited along the lineage tree of the cells and read out at its tips.
+`scTreeSim` simulates them on a fixed tree, with three simulators:
+
+| | `sim_barcode_seq()` | `sim_barcode_nonseq()` | `sim_barcode_generic()` |
+|---|---|---|---|
+| model | SciPhy | TiDeTree | both, and more |
+| sites edited | one after the other, left to right | independently | either (`sequential` flag) |
+| silencing | the whole barcode | each site separately | whole barcode or per site |
+| editing window | no | yes (`edit_height`, `edit_duration`) | via time profiles |
+| rates vary in time | no | window only | yes (`rate_window()`, ...) |
+| rates depend on the cell type | no | no | yes (`by_type`) |
+| dropout of a barcode at the tips | constant | constant | constant, or by type |
+
+The simulators take the same kind of tree, and all return a table with one row per node. We use
+a small multi-type tree (see `vignette("simulate_tree")`), so that the barcodes of all
+cells are readable. The barcodes of the tips are shown as colour-coded heatmaps next to the tree (one row per
+cell, one block per barcode, one column per site): a site is unedited (light grey), carries one of the
+edit outcomes `1, 2, ...` (colours), or is missing (pink), i.e. silenced or dropped out. The simulators
+return the same states as numbers (`0`, `1, 2, ...`) and a `missing_state` (here `"-"`) in tables, one row per node.
+
+```{r tree}
+origin_time <- 3.6
+ntype <- 2
+shape <- c(100, 1)
+scale <- 1 / shape
+r <- 0.11
+Xi_as <- matrix(c(0.0, 0.0, r, 0.0), nrow = ntype, ncol = ntype)
+Xi_s  <- matrix(c(1 - r, 0.0, 0.0, 1.0), nrow = ntype, ncol = ntype)
+
+set.seed(23)
+tree <- sim_adb_origin_samp(origin_time, scale, shape, death_prob = c(0.1, 0.1),
+                            sampling_prob = 0.8, origin_type = 0,
+                            asym_trans_prob = Xi_as, sym_trans_prob = Xi_s, collapse = FALSE)
+stopifnot(!is.null(tree))  # a simulation with too few tips returns NULL: try another seed
+
+plot_tree(tree, color = "type", show_nodes = TRUE)
+```
+
+The barcodes evolve along the branches, starting from an unedited barcode at the origin. The
+tree needs to be ultrametric, i.e. all tips are sampled at the present, and `collapse = FALSE`
+keeps the cell types on all branches (needed for rates that depend on the type, see below).
+
+# Sequential editing: `sim_barcode_seq()`
+
+In the SciPhy model the sites of a barcode are edited left to right, one at a time, at rate
+`edit_rate`: only the first unedited site can be edited next, so edited sites always
+form a prefix of the barcode. A barcode can also be silenced as a whole (`silencing_rate`), which
+competes with editing, and from then on all its sites are missing in all descendants.
+
+```{r seq}
+edit_probs <- c(0.5, 0.3, 0.2)  # relative frequencies of the E = 3 edit outcomes
+set.seed(2)
+bc_seq <- sim_barcode_seq(tree, n_barcodes = 3, n_sites = 5,
+                          edit_rate = 0.6, edit_probs = edit_probs,
+                          silencing_rate = 0.05, dropout_prob = 0.1, missing_state = "-")
+head(bc_seq, 3)
+```
+
+```{r seq-plot}
+plot_barcodes(tree, bc_seq, n_edits = length(edit_probs))
+```
+
+Each cell has three barcodes. The edits always form a prefix of the barcode (the unedited
+sites are at the right), cells that are close in the tree share the same edits, and a fully pink barcode was
+silenced in an ancestor (shared by relatives) or dropped out at the tip (private to a cell).
+
+# Independent sites in an editing window: `sim_barcode_nonseq()`
+
+In the TiDeTree model every site is a separate target, edited independently of the others, and
+editing is only possible in a window of time, as in systems where the editing machinery is switched on
+for a limited period. The window opens `edit_height` time units before the present and lasts
+`edit_duration`; each target is silenced independently at rate `silencing_rate`.
+
+```{r nonseq}
+set.seed(2)
+bc_nonseq <- sim_barcode_nonseq(tree, n_targets = 10, edit_rate = 0.6, edit_probs = edit_probs,
+                                edit_height = 3, edit_duration = 1.5,
+                                silencing_rate = 0.05, dropout_prob = 0.1, missing_state = "-")
+head(bc_nonseq, 3)
+```
+
+```{r nonseq-plot}
+plot_barcodes(tree, bc_nonseq, n_edits = length(edit_probs))
+```
+
+Edits now appear at any site, and are shared by the cells that descend from the cell in which they
+occurred. Because the window closes 1.5 time units before the present, the more recent divisions carry
+no edits of their own: the barcodes of sister cells are identical, except for dropout, unlike with sequential editing
+where editing continues until the present. This simulator returns one barcode of `n_targets` sites, and a silenced
+site is missing on its own, not the whole barcode.
+
+# One simulator for both: `sim_barcode_generic()`
+
+`sim_barcode_generic()` has the arguments of both models, and switches between them with
+`sequential`. With `sequential = TRUE` it is the model of `sim_barcode_seq()` (silencing and dropout
+affect the whole barcode); with `sequential = FALSE` the sites are independent, as in
+`sim_barcode_nonseq()`, but without a fixed window.
+
+```{r generic}
+set.seed(1)
+bc_generic_seq <- sim_barcode_generic(tree, n_barcodes = 3, n_sites = 5,
+                                      edit_rate = 0.6, edit_probs = edit_probs,
+                                      silencing_rate = 0.05, dropout_prob = 0.1,
+                                      sequential = TRUE)
+set.seed(1)
+bc_generic_ind <- sim_barcode_generic(tree, n_barcodes = 3, n_sites = 5,
+                                      edit_rate = 0.6, edit_probs = edit_probs,
+                                      silencing_rate = 0.05, dropout_prob = 0.1,
+                                      sequential = FALSE)
+```
+
+```{r generic-plot, fig.height = 4.5}
+plot_barcodes(tree, bc_generic_seq, n_edits = length(edit_probs)) +
+  labs(title = "sequential = TRUE")
+plot_barcodes(tree, bc_generic_ind, n_edits = length(edit_probs)) +
+  labs(title = "sequential = FALSE")
+```
+
+The generic simulator is statistically equivalent to the specialised ones (its tests compare the
+distributions of the barcodes of all three), and the specialised ones are faster. Everything
+below is only available in the generic simulator.
+
+The rates are given as numbers, or as `barcode_rate()` objects that add to a base rate a
+**time profile** and/or **multipliers by cell type**. The rate of a branch of type `k` at time `t` since the
+origin is `base * by_type[k + 1] * g(t)`.
+
+# Rates that change in time
+
+A time profile `g(t)` multiplies the base rate. Profiles are built from `rate_constant()`,
+`rate_window()`, `rate_exp_decay()`, `rate_piecewise()` and `rate_fn()`, and can be combined with
+`rate_product()`; see `?rate_profiles`. Time is measured since the origin of the tree.
+
+```{r profiles, fig.height = 3}
+e_start <- 1
+e_end <- 2.5
+profiles <- list(
+  "window (1, 2.5)" = rate_window(e_start, e_end),
+  "decay, half-life 1" = rate_exp_decay(1),
+  "decay inside the window" = rate_product(rate_window(e_start, e_end), rate_exp_decay(1))
+)
+grid <- seq(0, origin_time, length.out = 400)
+profile_df <- do.call(rbind, lapply(names(profiles), function(nm) {
+  data.frame(profile = nm, time = grid, g = profiles[[nm]]$g(grid))
+}))
+ggplot(profile_df, aes(time, g)) +
+  geom_line(color = type_cols[["0"]]) +
+  facet_wrap(~ profile) +
+  labs(x = "time since the origin", y = "multiplier g(t)") +
+  theme_minimal()
+```
+
+An editing rate with the window profile only edits between times 1 and 2.5 since the origin, i.e. in
+a window that is the same for all cells. Compare with a constant rate:
+
+```{r window}
+set.seed(1)
+bc_window <- sim_barcode_generic(tree, n_barcodes = 1, n_sites = 10,
+                                 edit_rate = barcode_rate(0.9, time = rate_window(e_start, e_end)),
+                                 edit_probs = edit_probs, sequential = FALSE)
+```
+
+```{r window-plot}
+plot_barcodes(tree, bc_window, n_edits = length(edit_probs)) +
+  annotate("rect", xmin = -(origin_time - e_start), xmax = -(origin_time - e_end), ymin = -Inf, ymax = Inf,
+           fill = type_cols[["2"]], alpha = 0.15)
+```
+
+Edits arise only in the shaded editing window (times 1 to 2.5 since the origin), so cells that split after
+the window has closed have identical barcodes.
+Silencing can have its own profile, e.g. `silencing_rate = barcode_rate(0.3, time = rate_exp_decay(1))`
+for a process that fades out.
+
+# Rates that depend on the cell type
+
+`by_type` multiplies the rate by a number per cell type (`by_type[k + 1]` for type `k`). Here the cells of type 1 (pink) edit ten times faster than the cells of type 0 (blue), and
+barcodes of type 1 cells drop out with probability 0.5. A dropout probability only applies at the tips, so it takes
+`by_type` but no time profile.
+
+```{r types}
+set.seed(1)
+bc_type <- sim_barcode_generic(tree, n_barcodes = 1, n_sites = 10,
+                               edit_rate = barcode_rate(0.15, by_type = c(1, 10)),
+                               edit_probs = edit_probs,
+                               dropout_prob = barcode_rate(1, by_type = c(0, 0.5)),
+                               missing_state = "-", sequential = FALSE)
+```
+
+```{r types-plot}
+plot_barcodes(tree, bc_type, n_edits = length(edit_probs))
+```
+
+The cells of type 1 accumulate many more edits, and most of the missing (pink) sites are in the type 1
+cells too. With independent sites, dropout masks the sites of a barcode one by one, whereas
+for sequential editing it removes the whole barcode. The type of a branch is the type of the cell at its end,
+so this needs a tree with `collapse = FALSE`; the root edge takes the type of the root.
+
+# Choosing a simulator
+
+* To simulate **SciPhy** barcodes, or the most simple barcodes with one editing rate: `sim_barcode_seq()`.
+* To simulate **TiDeTree** barcodes with an editing window: `sim_barcode_nonseq()`.
+* For **time-varying** (windows, decay) or **cell type-dependent** rates, or to switch between
+  sequential and independent sites: `sim_barcode_generic()`.
