@@ -13,7 +13,8 @@ sim_barcode_generic(
   silencing_rate = 0,
   dropout_prob = 0,
   missing_state = "-",
-  write_as_string = TRUE
+  write_as_string = TRUE,
+  sequential = TRUE
 )
 }
 \arguments{
@@ -31,17 +32,23 @@ frequencies of the edit outcomes. If named, the names are the labels of the
 outcomes written to the barcodes (e.g. \code{c(A = 0.7, T = 0.3)}); otherwise
 the outcomes are labelled 1,...,E.}
 
-\item{silencing_rate}{scalar or length-\code{n_barcodes} rate(s) at which an entire
-barcode is silenced, racing against the editing process}
+\item{silencing_rate}{scalar or length-\code{n_barcodes} silencing rate(s), racing
+against the editing process: the rate at which the entire barcode is silenced
+if \code{sequential = TRUE}, and the rate of each site if \code{sequential = FALSE}}
 
 \item{dropout_prob}{scalar or length-\code{n_barcodes} probability that a
-barcode drops out at a tip}
+barcode (if \code{sequential = TRUE}) or each site (if \code{sequential = FALSE}) drops out at a tip}
 
 \item{missing_state}{string marking silenced/dropout barcodes (default "-"),
 different from the unedited state "0" and the outcome labels}
 
 \item{write_as_string}{if \code{TRUE} (default), each barcode is returned as one
 "_"-separated string per node; if \code{FALSE}, as a node x site data frame}
+
+\item{sequential}{if \code{TRUE} (default), sites are edited left to right (only the leftmost
+unedited site is edited, at rate \code{edit_rate}), and silencing and dropout affect the
+whole barcode (SciPhy-like). If \code{FALSE}, every unedited site is edited independently at rate
+\code{edit_rate}, and silencing and dropout act on each site independently (TiDeTree-like).}
 }
 \value{
 if \code{write_as_string = TRUE}, a data frame with one row per node in the tree and one column
