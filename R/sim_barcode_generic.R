@@ -1,0 +1,253 @@
+# This simulator of lineage barcodes extends the TiDeTree and SciPhy models, i.e.,
+# follows a generic editing process with time- and type-dependent editing and silencing rates and dropout probabilties. 
+# sim_barcode_nonseq and sim_barcode_seq are special cases.
+
+#' Simulator of generic lineage barcodes
+#'
+#' @param tree a treedata object of a sampled tree: ultrametric, i.e. all tips
+#'   are sampled cells at present (e.g. from [sim_adb_origin_samp()])
+#' @param n_barcodes number of barcodes per cell
+#' @param n_sites number of target sites per barcode
+#' @param edit_rate scalar or length-`n_barcodes` editing rate(s) per barcode
+#'   (a number is constant in time). Time- and type-dependent rates are described by
+#'   [barcode_rate()], with time profiles from [rate_profiles].
+#' @param edit_probs numeric vector of length E, summing to 1: the relative
+#'   frequencies of the edit outcomes. If named, the names are the labels of the
+#'   outcomes written to the barcodes (e.g. `c(A = 0.7, T = 0.3)`); otherwise
+#'   the outcomes are labelled 1,...,E.
+#' @param silencing_rate scalar or length-`n_barcodes` silencing rate(s) (or [barcode_rate()]), racing
+#'   against the editing process: the rate at which the entire barcode is silenced
+#'   if `sequential = TRUE`, and the rate of each site if `sequential = FALSE`
+#' @param dropout_prob scalar or length-`n_barcodes` probability (or [barcode_rate()] with `by_type` only,
+#'   which may be `NA` for types not occurring at tips) that a
+#'   barcode (if `sequential = TRUE`) or each site (if `sequential = FALSE`) drops out at a tip
+#' @param missing_state string marking silenced/dropout barcodes (default "-"),
+#'   different from the unedited state "0" and the outcome labels
+#' @param sequential if `TRUE` (default), sites are edited left to right (only the leftmost
+#'   unedited site is edited, at rate `edit_rate`), and silencing and dropout affect the
+#'   whole barcode (SciPhy-like). If `FALSE`, every unedited site is edited independently at rate
+#'   `edit_rate`, and silencing and dropout act on each site independently (TiDeTree-like).
+#' @param write_as_string if `TRUE` (default), each barcode is returned as one
+#'   "_"-separated string per node; if `FALSE`, as a node x site data frame
+#'
+#' @return if `write_as_string = TRUE`, a data frame with one row per node in the tree and one column
+#'   per barcode: \code{node}, \code{barcode_1}, ..., \code{barcode_<n_barcodes>},
+#'   each entry a string of `n_sites` positions separated by "_"
+#'   (e.g. "0_A_B_0_0"), where "0" = unedited and `missing_state` = silenced/dropout
+#'   (every site reads `missing_state` once a barcode is silenced or dropped out).
+#'   If `write_as_string = FALSE`, a named list (\code{barcode_1}, ...) with one data frame per barcode,
+#'   with one row per node and (character) columns \code{node}, \code{site_1}, ..., \code{site_<n_sites>}.
+#' @family barcode simulators
+#' @seealso [barcode_rate()] and [rate_profiles] for time- and type-dependent rates
+#' @export
+sim_barcode_generic <- function(tree, n_barcodes, n_sites, edit_rate, edit_probs,
+                                silencing_rate = 0, dropout_prob = 0, missing_state = "-", write_as_string = TRUE,
+                                sequential = TRUE) {
+
+  stopifnot(methods::is(tree, "treedata"))
+  if (!ape::is.ultrametric(tree@phylo)) {
+    stop("`tree` must be ultrametric (a sampled tree with all tips at present).", call. = FALSE)
+  }
+
+  stopifnot(
+    is.logical(write_as_string), length(write_as_string) == 1, !is.na(write_as_string),
+    is.logical(sequential), length(sequential) == 1, !is.na(sequential),
+    length(n_barcodes) == 1, n_barcodes >= 1, length(n_sites) == 1, n_sites >= 1
+  )
+
+  # rates: a number, a per-barcode vector, or a barcode_rate() with a time profile
+  edit_rate <- .as_barcode_rate(edit_rate, n_barcodes, "edit_rate")
+  silencing_rate <- .as_barcode_rate(silencing_rate, n_barcodes, "silencing_rate")
+  dropout_prob <- .as_barcode_rate(dropout_prob, n_barcodes, "dropout_prob")
+  if (dropout_prob$time_given) {
+    stop("`dropout_prob` is a probability at the tips and has no time profile.", call. = FALSE)
+  }
+  if (any(dropout_prob$base > 1)) stop("`dropout_prob` must not exceed 1.", call. = FALSE)
+
+  if (!is.numeric(edit_probs) || length(edit_probs) < 1 || anyNA(edit_probs) || any(edit_probs < 0) ||
+      !isTRUE(all.equal(sum(edit_probs), 1))) {
+    stop("`edit_probs` must be non-negative numbers summing to 1.", call. = FALSE)
+  }
+  # outcome labels: names of edit_probs, otherwise 1..E
+  labels <- if (is.null(names(edit_probs))) as.character(seq_along(edit_probs)) else names(edit_probs)
+  if (anyNA(labels) || any(labels == "") || anyDuplicated(labels) || any(grepl("_", labels, fixed = TRUE))) {
+    stop("Names of `edit_probs` must be unique, non-empty and must not contain \"_\".", call. = FALSE)
+  }
+  if (length(missing_state) != 1 || is.na(missing_state) ||
+      as.character(missing_state) %in% c("0", labels) || grepl("_", missing_state, fixed = TRUE)) {
+    stop("`missing_state` must be a single string different from \"0\" and the edit outcomes, without \"_\".",
+         call. = FALSE)
+  }
+  missing_state <- as.character(missing_state)
+
+  tree_df <- tree %>% tibble::as_tibble() %>% as.data.frame()
+  root <- tree_df$node[tree_df$parent == tree_df$node]
+  stopifnot(length(root) == 1)
+
+  # type of each node (named by node number), if any rate depends on it; the branch ending in a node
+  # has that node's type (the root edge: the root's type)
+  # tips are nodes 1..Ntip (all sampled cells, since the tree is ultrametric)
+  tip_nodes <- seq_along(tree@phylo$tip.label)
+  node_type <- .check_node_types(tree_df, edit_rate, silencing_rate, dropout_prob, tip_nodes)
+  type_of <- function(node) if (is.null(node_type)) 0L else node_type[[as.character(node)]]
+  if (!is.null(node_type) && !is.null(dropout_prob$by_type) &&
+      any(outer(dropout_prob$base, dropout_prob$by_type[unique(node_type[as.character(tip_nodes)]) + 1]) > 1)) {
+    stop("`dropout_prob` times `by_type` must not exceed 1.", call. = FALSE)
+  }
+
+  # visit parent before child so state can propagate down the tree; use the
+  # topology rather than heights, which tie on zero-length branches
+  child_order <- ape::reorder.phylo(tree@phylo, order = "cladewise")$edge[, 2]
+  order_df <- tree_df[match(child_order, tree_df$node), ]
+
+  # branch lengths come from the treedata; the root edge from the phylo object
+  root_edge <- if (is.null(tree@phylo$root.edge)) 0 else tree@phylo$root.edge
+  # time since the origin of each node (indexed by node number)
+  node_time <- ape::node.depth.edgelength(tree@phylo) + root_edge
+  origin <- max(node_time)
+  if (!is.null(tree@phylo$origin) && !isTRUE(all.equal(tree@phylo$origin, origin))) {
+    warning("`tree@phylo$origin` differs from the tree height plus root edge; the latter is used.", call. = FALSE)
+  }
+
+  bc_states <- vector("list", n_barcodes)
+  for (bc in seq_len(n_barcodes)) {
+    # state_at: barcode state per node (silenced sites are marked by `missing_state`,
+    # so silencing persists down every descendant branch)
+    state_at <- list()
+    state_at[[as.character(root)]] <- rep("0", n_sites)
+
+    # evolve along the root/origin edge first, if the tree has one
+    if (root_edge > 0) {
+      state_at[[as.character(root)]] <- .evolve_branch_generic(
+        state_at[[as.character(root)]], 0, root_edge,
+        edit_rate$base[bc] * .type_multiplier(edit_rate, type_of(root)), edit_rate$time,
+        silencing_rate$base[bc] * .type_multiplier(silencing_rate, type_of(root)), silencing_rate$time,
+        edit_probs, labels, missing_state, sequential
+      )
+    }
+
+    # then walk every remaining branch, parent state -> child state
+    for (i in seq_len(nrow(order_df))) {
+      node <- order_df$node[i]
+      if (node == root) next
+      parent <- order_df$parent[i]
+
+      state_at[[as.character(node)]] <- .evolve_branch_generic(
+        state_at[[as.character(parent)]], node_time[node] - order_df$branch.length[i], node_time[node],
+        edit_rate$base[bc] * .type_multiplier(edit_rate, type_of(node)), edit_rate$time,
+        silencing_rate$base[bc] * .type_multiplier(silencing_rate, type_of(node)), silencing_rate$time,
+        edit_probs, labels, missing_state, sequential
+      )
+    }
+
+    # apply dropout after simulation: the whole barcode if sequential, otherwise each site
+    # (already silenced sites stay silenced)
+    for (nd in tip_nodes) {
+      key <- as.character(nd)
+      p_drop <- dropout_prob$base[bc] * .type_multiplier(dropout_prob, type_of(nd))
+      if (p_drop > 0) {
+        if (sequential) {
+          if (stats::runif(1) < p_drop) state_at[[key]][] <- missing_state
+        } else {
+          state_at[[key]][stats::runif(n_sites) < p_drop] <- missing_state
+        }
+      }
+    }
+
+    # nodes x sites character matrix
+    # (explicit matrix(): vapply drops to a vector when n_sites = 1)
+    bc_states[[bc]] <- matrix(
+      unlist(lapply(tree_df$node, function(nd) state_at[[as.character(nd)]])),
+      ncol = n_sites, byrow = TRUE
+    )
+  }
+
+  if (write_as_string) {
+    out <- data.frame(node = tree_df$node)
+    for (bc in seq_len(n_barcodes)) {
+      out[[paste0("barcode_", bc)]] <- apply(bc_states[[bc]], 1, paste, collapse = "_")
+    }
+    return(out)
+  }
+
+  out <- lapply(bc_states, function(m) {
+    colnames(m) <- paste0("site_", seq_len(n_sites))
+    data.frame(node = tree_df$node, m, stringsAsFactors = FALSE)
+  })
+  names(out) <- paste0("barcode_", seq_len(n_barcodes))
+  out
+}
+
+
+# Evolve one barcode copy along one branch, from time t0 to t1 since the origin,
+# with exponential waiting times. At each event, draw whether it is an edit or silencing.
+# sequential: one edit clock (leftmost unedited site) and one whole-barcode silencing clock;
+# otherwise: each unedited site has its own edit clock and each unsilenced site its own silencing clock.
+# Silenced sites are marked by `missing_state` and never change again.
+# Time-varying rates (rate = base x profile$g(t)) are simulated by thinning:
+# the branch is cut at the profile breakpoints, candidate events are drawn with the bound
+# base x profile$max on each piece, and accepted with probability g(t) / max.
+.evolve_branch_generic <- function(parent_state, t0, t1, edit_rate, edit_profile,
+                                   silencing_rate, silencing_profile,
+                                   edit_probs, labels, missing_state, sequential) {
+  state <- parent_state
+
+  cuts <- sort(unique(c(t0, t1, edit_profile$breaks, silencing_profile$breaks)))
+  cuts <- cuts[cuts >= t0 & cuts <= t1]
+
+  for (k in seq_len(length(cuts) - 1)) {
+    piece_start <- cuts[k]
+    piece_end <- cuts[k + 1]
+    edit_max <- edit_profile$max(piece_start, piece_end)
+    silencing_max <- silencing_profile$max(piece_start, piece_end)
+    t <- piece_start
+
+    repeat {
+      free <- which(state == "0")
+      alive <- which(state != missing_state)
+
+      # nothing can happen any more
+      if (length(alive) == 0) break
+
+      # bounds of the rates of the competing events
+      if (sequential) {
+        total_edit_rate <- if (length(free) > 0) edit_rate * edit_max else 0
+        total_silencing_rate <- silencing_rate * silencing_max
+      } else {
+        total_edit_rate <- edit_rate * edit_max * length(free)
+        total_silencing_rate <- silencing_rate * silencing_max * length(alive)
+      }
+      event_rate <- total_edit_rate + total_silencing_rate
+      if (event_rate <= 0) break  # no editing left to do and no silencing possible
+
+      # draw time to the next candidate event (edit or silencing) on the combined clock
+      t <- t + stats::rexp(1, event_rate)
+      if (t >= piece_end) break  # no more events fit in this piece
+
+      # which of the two competing events fired, weighted by relative rate
+      is_silencing <- stats::runif(1) < total_silencing_rate / event_rate
+
+      # thinning: accept with probability g(t) / max
+      accept <- if (is_silencing) silencing_profile$g(t) / silencing_max else edit_profile$g(t) / edit_max
+      if (accept > 1 + 1e-8) {
+        stop("A rate profile exceeds its stated maximum at time ", format(t), ".", call. = FALSE)
+      }
+      if (accept < 1 && stats::runif(1) >= accept) next
+
+      if (is_silencing) {
+        if (sequential) {
+          state[] <- missing_state
+        } else {
+          # (index via sample.int: sample() on a single number would draw from 1:n)
+          state[alive[sample.int(length(alive), 1)]] <- missing_state
+        }
+      } else {
+        # edit event: the leftmost still-unedited site, or a random one if not sequential
+        pos <- if (sequential) free[1] else free[sample.int(length(free), 1)]
+        state[pos] <- labels[sample.int(length(labels), size = 1, prob = edit_probs)]
+      }
+    }
+  }
+
+  state
+}
