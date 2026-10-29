@@ -34,5 +34,6 @@ vignettes/*.docx
 /doc/
 /Meta/
 
-# benchmarking files
+# Development notes and benchmarking files
+dev/
 benchmarking_reports/
