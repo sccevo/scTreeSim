@@ -29,7 +29,7 @@ test_that("the 16 GT16 states are the ordered nucleotide pairs", {
 })
 
 test_that("only one allele changes in an individual event", {
-  dest <- scTreeSim:::.gt16_neighbours()
+  dest <- scTreeSim:::.gt16_events(rates, pi)$dest
   states <- scTreeSim:::.gt16_states
 
   expect_equal(dim(dest), c(16L, 6L))
@@ -74,6 +74,24 @@ test_that("event rates equal the off-diagonal entries of the normalized GT16 Q",
   expect_equal(as.vector(pi %*% Q), rep(0, 16), tolerance = 1e-12)
   # and Q is reversible with respect to pi
   expect_equal(pi * Q, t(pi * Q), ignore_attr = TRUE)
+})
+
+test_that("a tree with zero-length edges is simulated parent before child", {
+  # t1-t3 hang from their parent by zero-length edges, so they tie with it on
+  # height; they must still inherit its genotype rather than be left unset
+  zero_tree <- treeio::as.treedata(ape::read.tree(text = "(((t1:0,t2:0,t3:0):1,t4:1):1,t5:2);"))
+  zero_df <- as.data.frame(tibble::as_tibble(zero_tree))
+
+  for (seed in 1:3) {
+    out <- withr::with_seed(seed, sim_gt16_nt_diploid(zero_tree, sequences = c("CGTAAC", "CGTATC")))
+    expect_true(all(nzchar(out$genotype)))
+    expect_true(all(unlist(split_sites(out$genotype)) %in% scTreeSim:::.gt16_states))
+
+    zero <- !is.na(zero_df$branch.length) & zero_df$branch.length == 0 &
+      zero_df$parent != zero_df$node
+    expect_identical(out$genotype[match(zero_df$node[zero], out$node)],
+                     out$genotype[match(zero_df$parent[zero], out$node)])
+  }
 })
 
 test_that("a zero-length branch leaves every genotype unchanged", {

@@ -1,96 +1,82 @@
+.gt16_nucleotides <- c("A", "C", "G", "T")
+
+# the 16 ordered diploid states: AA AC AG AT CA CC CG CT GA GC GG GT TA TC TG TT
+.gt16_states <- paste0(rep(.gt16_nucleotides, each = 4), rep(.gt16_nucleotides, times = 4))
+
+# the nucleotide on each allele copy of each state
+.gt16_allele1 <- rep(seq_along(.gt16_nucleotides), each = 4)
+.gt16_allele2 <- rep(seq_along(.gt16_nucleotides), times = 4)
+
 #' GT16 diploid nucleotide SNV simulator
-#'
-#' The GT16 substitution model and its error model, and the respective code
-#' logic, have been adapted from the BEAST phylonco paper and software as
-#' cited below.
-#' Paper: Chen, K., Moravec, J. C., Gavryushkin, A., Welch, D., & Drummond, A. J. (2022).
-#' Accounting for errors in data improves divergence time estimates in single-cell cancer evolution.
-#' Molecular biology and evolution, 39(8), msac143.
-#' Beast phylonco software: A BEAST2 package for single-cell phylogenetic analysis of cancer evolution.
-#' source: https://github.com/bioDS/beast-phylonco-paper/tree/main
-#' The GT16 model itself is due to Kozlov et al. (2022), CellPhy, Genome Biology 23, 37.
 #'
 #' Simulates diploid single-nucleotide variants along a fixed tree under the
 #' GT16 model. The 16 states are the *ordered* pairs of nucleotides
 #' \code{AA, AC, AG, AT, CA, CC, ..., TT}, i.e. one entry per allele copy, so
-#' \code{AG} and \code{GA} are distinct states and are not collapsed.
-#'
-#' The root genotype is supplied as the two aligned allele sequences
-#' (`sequences`), which are paired site by site: `c("CGTAAC", "CGTATC")` is
-#' the six-site root genotype \code{CC_GG_TT_AA_AT_CC}. Each site then
-#' evolves independently down the tree.
-#'
-#' Instead of forming the transition probability matrix
-#' \eqn{P(t) = \exp(Qt)} for every branch and site, the continuous-time
-#' Markov chain is simulated mechanistically, event by event, along the
-#' actual branch length (see Details). The resulting process is equivalent
-#' to the GT16 transition model, it is just realised by sampling waiting
-#' times rather than by exponentiating a 16x16 matrix.
+#' \code{AG} and \code{GA} are distinct states and are not collapsed. Each
+#' site evolves independently down the tree.
 #'
 #' @details
-#' **States and events.** An individual substitution event changes exactly one
-#' of the two allele copies, so every genotype has at most six immediate
-#' neighbours: three substitutions of the first allele and three of the
-#' second. From \code{AG}, for example, the possible events are
-#' \code{AG -> CG, GG, TG} (first allele) and \code{AG -> AA, AC, AT}
-#' (second allele). \code{AG -> CT} has an instantaneous rate of zero,
-#' because both copies would have to change at once; it is still reachable
-#' over a branch through two events, e.g. \code{AG -> CG -> CT}.
+#' **Events.** A substitution changes exactly one allele copy, so every
+#' genotype has six immediate neighbours: from \code{AG} they are
+#' \code{CG, GG, TG} (first allele) and \code{AA, AC, AT} (second).
+#' \code{AG -> CT} has an instantaneous rate of zero, but is still reachable
+#' over a branch through two events.
 #'
-#' **Rates.** With `rates` the six GTR-like nucleotide exchangeabilities
-#' \eqn{(r_{AC}, r_{AG}, r_{AT}, r_{CG}, r_{CT}, r_{GT})} and `pi` the
-#' genotype equilibrium frequencies, the GT16 rate matrix is
-#' \eqn{Q_{ij} = R_{ij} \pi_j} for genotypes \eqn{i, j} differing at exactly
-#' one allele (where \eqn{R_{ij}} is the exchangeability of the two
-#' nucleotides that differ), zero for all other off-diagonal entries, and
-#' \eqn{Q_{ii} = -\sum_{j \neq i} Q_{ij}}. \eqn{Q} is then rescaled so that
-#' one unit of branch length is one expected substitution,
-#' \eqn{\beta = -1 / (\pi \cdot \mathrm{diag}(Q))}. The event rates used by
-#' the simulator are read straight off the off-diagonal entries of this
-#' normalized \eqn{Q}, so they agree with it by construction. The
-#' normalization matters: a common factor cancels when choosing *which*
-#' event fires, but not when drawing the waiting time until it fires.
+#' **Rates.** For genotypes \eqn{i, j} differing at exactly one allele,
+#' \eqn{Q_{ij} = R_{ij} \pi_j}, where \eqn{R_{ij}} is the exchangeability of
+#' the two differing nucleotides; all other off-diagonal entries are zero and
+#' \eqn{Q_{ii} = -\sum_{j \neq i} Q_{ij}}. \eqn{Q} is rescaled so that one
+#' unit of branch length is one expected substitution.
 #'
-#' **Branch algorithm.** Each site starts the branch in the genotype
-#' inherited from its parent. The total outgoing rate \eqn{R} of the current
-#' genotype gives a waiting time \eqn{\Delta t \sim \mathrm{Exp}(R)}; if the
-#' elapsed time plus \eqn{\Delta t} exceeds the branch time the genotype is
-#' passed unchanged to the child, otherwise one event is drawn with
-#' probability \eqn{r_k / R}, applied, and the remaining branch time is
-#' simulated the same way. A branch may therefore carry zero, one or many
-#' substitutions, and a zero-length branch always carries none.
+#' **Branch algorithm.** Rather than forming \eqn{P(t) = \exp(Qt)} for every
+#' branch, the chain is simulated event by event. Each site starts the branch
+#' in the genotype inherited from its parent; its total outgoing rate \eqn{R}
+#' gives a waiting time \eqn{\Delta t \sim \mathrm{Exp}(R)}. If \eqn{\Delta t}
+#' overruns the remaining branch time the genotype passes unchanged to the
+#' child, otherwise an event fires with probability \eqn{r_k / R} and the rest
+#' of the branch is simulated the same way. A branch may therefore carry zero,
+#' one or many substitutions. The result is equivalent to the GT16 transition
+#' model; note that the rate normalization matters, since a common factor
+#' cancels when choosing *which* event fires but not in the waiting time.
 #'
-#' **Error model.** `epsilon` (combined amplification and sequencing error)
-#' and `delta` (allelic dropout) are applied *after* the evolutionary
-#' simulation, to the tips only, following equation (2) of Chen et al.
-#' (2022). They never feed back into the substitution process: the true
-#' genotypes are returned alongside the observed ones.
+#' **Error model.** `epsilon` and `delta` are applied *after* the evolutionary
+#' simulation, to the tips only, following equation (2) of Chen et al. (2022).
+#' They never feed back into the substitution process: the true genotypes are
+#' returned alongside the observed ones.
+#'
+#' The GT16 model is due to Kozlov et al. (2022), CellPhy, Genome Biology 23,
+#' 37. The error model and the code logic here are adapted from Chen, K.,
+#' Moravec, J. C., Gavryushkin, A., Welch, D., & Drummond, A. J. (2022),
+#' Accounting for errors in data improves divergence time estimates in
+#' single-cell cancer evolution, Molecular Biology and Evolution 39(8),
+#' msac143, and the BEAST2 phylonco package
+#' (https://github.com/bioDS/beast-phylonco-paper).
 #'
 #' @param tree a treedata object
 #' @param sequences the root genotype, given as the two aligned allele
-#'   sequences of length `l`, e.g. `c("CGTAAC", "CGTATC")`; the two strings
-#'   are paired site by site into the GT16 states (here CC, GG, TT, AA, AT,
-#'   CC). Supply this or `l`
+#'   sequences of length `l`; they are paired site by site, so
+#'   `c("CGTAAC", "CGTATC")` is the six-site genotype CC, GG, TT, AA, AT, CC.
+#'   Supply this or `l`
 #' @param rates the six nucleotide exchangeabilities, in the order
-#'   \eqn{r_{AC}, r_{AG}, r_{AT}, r_{CG}, r_{CT}, r_{GT}}; a common scaling
-#'   of all six is removed by the rate normalization
+#'   \eqn{r_{AC}, r_{AG}, r_{AT}, r_{CG}, r_{CT}, r_{GT}}; a common scaling of
+#'   all six is removed by the rate normalization
 #' @param pi equilibrium frequencies: either 16 genotype frequencies in the
-#'   state order above, or 4 nucleotide frequencies (in the order A, C, G, T)
-#'   from which the genotype frequencies are formed as
-#'   \eqn{\pi_{ab} = \pi_a \pi_b}; `NULL` (default) for a uniform 1/16
-#' @param l number of SNV sites. Used in place of `sequences` to draw the
-#'   root genotypes from `pi` instead of fixing them; alongside `sequences`
-#'   it is optional, and must then give their length
+#'   state order above, or 4 nucleotide frequencies (A, C, G, T) from which the
+#'   genotype frequencies are formed as \eqn{\pi_{ab} = \pi_a \pi_b}; `NULL`
+#'   (default) for a uniform 1/16
+#' @param l number of SNV sites. Used in place of `sequences` to draw the root
+#'   genotypes from `pi` instead of fixing them; alongside `sequences` it is
+#'   optional, and must then give their length
 #' @param clock_rate substitution rate applied per unit branch length
 #' @param epsilon combined amplification and sequencing error probability
 #' @param delta allelic dropout probability
 #'
 #' @return a data frame with one row per node in the tree and columns
 #'   \code{node}, \code{genotype} (the true simulated sequence) and
-#'   \code{observed} (the sequence after the error model), each entry a
-#'   string of `l` genotypes separated by "_" (e.g. "AA_CG_TT"). The error
-#'   model applies to the sampled tips (\code{status == 1}), so
-#'   \code{observed} equals \code{genotype} at every other node.
+#'   \code{observed} (the sequence after the error model), each entry a string
+#'   of `l` genotypes separated by "_" (e.g. "AA_CG_TT"). The error model
+#'   applies to the sampled tips (\code{status == 1}), so \code{observed}
+#'   equals \code{genotype} at every other node.
 #' @export
 sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = NULL,
                                 l = NULL, clock_rate = 1,
@@ -128,14 +114,10 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
   root <- tree_df$node[tree_df$parent == tree_df$node]
   stopifnot(length(root) == 1)
 
-  # heights are measured as time since the present
-  depth_from_root <- ape::node.depth.edgelength(tree@phylo)
-  heights <- max(depth_from_root) - depth_from_root
-  order_df <- tree_df[order(-heights[tree_df$node]), ]
-
-  root_edge <- tree@phylo$root.edge
-
-  tip_nodes <- tree_df$node[tree_df$status == 1]
+  # edges in cladewise order, so a parent is always evolved before its
+  # children; sorting nodes on height does not guarantee that, because a
+  # zero-length edge leaves parent and child tied
+  phylo <- ape::reorder.phylo(tree@phylo, "cladewise")
 
   state_at <- list()
   state_at[[as.character(root)]] <- if (is.null(root_state)) {
@@ -145,33 +127,36 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
   }
 
   # evolve along the origin-to-root edge first, if the tree has one
+  root_edge <- tree@phylo$root.edge
   if (!is.null(root_edge) && root_edge > 0) {
     state_at[[as.character(root)]] <- .evolve_branch_gt16(
       state_at[[as.character(root)]], clock_rate * root_edge, events
     )
   }
 
-  # then walk every remaining branch, parent genotype -> child genotype, so
-  # that a node's genotypes are inherited before any further substitution
-  for (i in seq_len(nrow(order_df))) {
-    node <- order_df$node[i]
-    if (node == root) next
-    parent <- order_df$parent[i]
-    branch_length <- heights[parent] - heights[node]
+  # then walk every remaining branch, parent genotype -> child genotype
+  # (the root never appears as a child, so it is covered by the block above)
+  for (i in seq_len(nrow(phylo$edge))) {
+    parent <- phylo$edge[i, 1]
+    node <- phylo$edge[i, 2]
 
     state_at[[as.character(node)]] <- .evolve_branch_gt16(
-      state_at[[as.character(parent)]], clock_rate * branch_length, events
+      state_at[[as.character(parent)]], clock_rate * phylo$edge.length[i], events
     )
   }
 
   # sequencing is a measurement effect, so the observed genotypes are a
-  # separate copy, derived from the finished true genotypes at the tips
+  # separate copy, derived site by site from the finished true genotypes
   observed_at <- state_at
   if (epsilon > 0 || delta > 0) {
     error_matrix <- .gt16_error_matrix(epsilon, delta)
-    for (nd in tip_nodes) {
-      key <- as.character(nd)
-      observed_at[[key]] <- .add_gt16_error(state_at[[key]], error_matrix)
+    for (node in tree_df$node[tree_df$status == 1]) {
+      key <- as.character(node)
+      observed_at[[key]] <- vapply(
+        state_at[[key]],
+        function(s) sample.int(nrow(error_matrix), 1, prob = error_matrix[s, ]),
+        integer(1)
+      )
     }
   }
 
@@ -184,24 +169,13 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
   )
 }
 
-.gt16_nucleotides <- c("A", "C", "G", "T")
-
-# the 16 ordered diploid states: AA AC AG AT CA CC CG CT GA GC GG GT TA TC TG TT
-.gt16_states <- paste0(rep(.gt16_nucleotides, each = 4), rep(.gt16_nucleotides, times = 4))
-
-# allele indices of each of the 16 states, used throughout to decide which
-# copy a candidate change would affect
-.gt16_allele1 <- rep(seq_along(.gt16_nucleotides), each = 4)
-.gt16_allele2 <- rep(seq_along(.gt16_nucleotides), times = 4)
-
-# accept either 16 genotype frequencies or 4 nucleotide frequencies, in
-# which case the genotype frequencies are the products pi_a * pi_b
+# accept either 16 genotype frequencies or 4 nucleotide frequencies, in which
+# case the genotype frequencies are the products pi_a * pi_b
 .gt16_pi <- function(pi) {
   if (is.null(pi)) return(rep(1 / 16, 16))
   if (anyNA(pi) || any(pi < 0) || !isTRUE(all.equal(sum(pi), 1))) {
     stop("`pi` must be non-negative frequencies summing to 1.", call. = FALSE)
   }
-  # nucleotide frequencies: pi_ab = pi_a * pi_b, in the GT16 state order
   if (length(pi) == 4) return(rep(pi, each = 4) * rep(pi, times = 4))
   if (length(pi) != 16) {
     stop("`pi` must have length 16 (genotype frequencies) or 4 (nucleotide frequencies).", call. = FALSE)
@@ -209,10 +183,10 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
   as.vector(pi)
 }
 
-# Pair the two aligned allele sequences site by site into GT16 states, so
-# that c("CGTAAC", "CGTATC") becomes CC, GG, TT, AA, AT, CC. The first
-# sequence supplies the first allele of every state and the second the
-# second, which is what makes the states ordered (phased).
+# Pair the two aligned allele sequences site by site into GT16 states, so that
+# c("CGTAAC", "CGTATC") becomes CC, GG, TT, AA, AT, CC. The first sequence
+# supplies the first allele of every state and the second the second, which is
+# what makes the states ordered (phased).
 .gt16_pair_sequences <- function(sequences) {
   if (!is.character(sequences) || length(sequences) != 2 || anyNA(sequences)) {
     stop("`sequences` must be a character vector of the two aligned allele sequences, e.g. c(\"CGTAAC\", \"CGTATC\").",
@@ -230,26 +204,17 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
   (alleles[[1]] - 1L) * 4L + alleles[[2]]
 }
 
-# the 4x4 symmetric nucleotide exchangeabilities, from the six GTR-like
-# parameters in the order AC, AG, AT, CG, CT, GT
-.gt16_nuc_exchangeability <- function(rates) {
-  R <- matrix(0, 4, 4, dimnames = list(.gt16_nucleotides, .gt16_nucleotides))
-  R[1, 2] <- R[2, 1] <- rates[1]  # A <-> C
-  R[1, 3] <- R[3, 1] <- rates[2]  # A <-> G
-  R[1, 4] <- R[4, 1] <- rates[3]  # A <-> T
-  R[2, 3] <- R[3, 2] <- rates[4]  # C <-> G
-  R[2, 4] <- R[4, 2] <- rates[5]  # C <-> T
-  R[3, 4] <- R[4, 3] <- rates[6]  # G <-> T
-  R
-}
-
-# The full normalized 16x16 GT16 rate matrix. Only used to build the event
-# rates once per call (and as the reference the tests check against); the
+# The normalized 16x16 GT16 rate matrix. Built once per call to derive the
+# event rates (and used as the reference the tests check against); the
 # simulation itself never exponentiates it.
 .gt16_rate_matrix <- function(rates, pi) {
-  R <- .gt16_nuc_exchangeability(rates)
-  n <- length(.gt16_states)
+  # symmetric nucleotide exchangeabilities; the lower triangle taken in column
+  # order is exactly the input order AC, AG, AT, CG, CT, GT
+  R <- matrix(0, 4, 4, dimnames = list(.gt16_nucleotides, .gt16_nucleotides))
+  R[lower.tri(R)] <- rates
+  R <- R + t(R)
 
+  n <- length(.gt16_states)
   Q <- matrix(0, n, n, dimnames = list(.gt16_states, .gt16_states))
   for (i in seq_len(n)) {
     for (j in seq_len(n)) {
@@ -268,9 +233,8 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
   }
 
   # normalize so that one unit of branch length is one expected substitution
-  d <- -1 * rowSums(Q)
-  diag(Q) <- d
-  total_rate <- as.vector(pi %*% d)
+  diag(Q) <- -rowSums(Q)
+  total_rate <- as.vector(pi %*% diag(Q))
   if (total_rate >= 0) {
     # every state carrying equilibrium mass is a dead end, so there is no
     # timescale to normalize against
@@ -279,10 +243,17 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
   (-1 / total_rate) * Q
 }
 
-# The six states reachable from each state by a single-allele substitution:
-# three for the first allele copy, three for the second.
-.gt16_neighbours <- function() {
+# The event table driving the simulation: for each state, the six states
+# reachable by a single-allele substitution (`dest`) and their rates, read
+# straight off the off-diagonals of the normalized Q so that the mechanistic
+# simulation and the matrix model cannot drift apart. `cumulative` makes
+# drawing an event one comparison per site, and its last column doubles as the
+# total outgoing rate (sharing the same floating-point sum keeps the draw
+# inside the six events).
+.gt16_events <- function(rates, pi) {
+  Q <- .gt16_rate_matrix(rates, pi)
   n <- length(.gt16_states)
+
   dest <- matrix(0L, n, 6L)
   for (i in seq_len(n)) {
     a1 <- .gt16_allele1[i]
@@ -292,29 +263,18 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
       (a1 - 1L) * 4L + setdiff(1:4, a2)   # second allele substituted
     )
   }
-  dest
-}
 
-# Event rates taken directly from the off-diagonal entries of the normalized
-# GT16 Q, so the mechanistic simulation and the matrix model cannot drift
-# apart. `cumulative` is carried so that drawing an event is one comparison
-# per site, and its last column doubles as the total outgoing rate (sharing
-# the same floating-point sum keeps the draw inside the six events).
-.gt16_events <- function(rates, pi) {
-  Q <- .gt16_rate_matrix(rates, pi)
-  dest <- .gt16_neighbours()
-  n <- nrow(dest)
-  rate <- matrix(Q[cbind(rep(seq_len(n), ncol(dest)), as.vector(dest))], n, ncol(dest))
+  rate <- matrix(Q[cbind(rep(seq_len(n), 6L), as.vector(dest))], n, 6L)
   cumulative <- t(apply(rate, 1, cumsum))
   list(Q = Q, dest = dest, rate = rate, cumulative = cumulative,
-       total = cumulative[, ncol(cumulative)])
+       total = cumulative[, 6L])
 }
 
-# Gillespie simulation of the GT16 chain along one branch, run for all sites
-# at once: sites still "in flight" draw their next waiting time together,
-# those whose next event falls past the end of the branch drop out, and the
-# rest take one single-allele substitution and go round again. Sites that
-# never have an event simply inherit the parent genotype.
+# Gillespie simulation of the GT16 chain along one branch, run for all sites at
+# once: sites still "in flight" draw their next waiting time together, those
+# whose next event falls past the end of the branch drop out, and the rest take
+# one single-allele substitution and go round again. Sites that never have an
+# event simply inherit the parent genotype.
 .evolve_branch_gt16 <- function(state, branch_time, events) {
   if (branch_time <= 0) return(state)
 
@@ -323,8 +283,8 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
 
   while (length(active) > 0) {
     s <- state[active]
-    # a state with no outgoing rate gives an infinite waiting time and so
-    # simply leaves the loop below
+    # a state with no outgoing rate gets an infinite waiting time and so simply
+    # drops out below
     elapsed[active] <- elapsed[active] + stats::rexp(length(active), events$total[s])
 
     fits <- elapsed[active] <= branch_time
@@ -383,10 +343,4 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
     }
   }
   M
-}
-
-# applies the error model independently to each site of an already-simulated
-# sequence, leaving the true sequence it was given untouched
-.add_gt16_error <- function(state, error_matrix) {
-  vapply(state, function(s) sample.int(nrow(error_matrix), 1, prob = error_matrix[s, ]), integer(1))
 }
