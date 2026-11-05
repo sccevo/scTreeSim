@@ -44,10 +44,34 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// sim_barcodes_cpp
+IntegerVector sim_barcodes_cpp(IntegerVector parent, IntegerVector child, IntegerVector tips, int n_barcodes, int n_sites, bool sequential, NumericVector edit_base, List edit_process, NumericVector silencing_base, List silencing_process, NumericVector dropout_base, NumericVector dropout_mult, NumericVector edit_probs);
+RcppExport SEXP _scTreeSim_sim_barcodes_cpp(SEXP parentSEXP, SEXP childSEXP, SEXP tipsSEXP, SEXP n_barcodesSEXP, SEXP n_sitesSEXP, SEXP sequentialSEXP, SEXP edit_baseSEXP, SEXP edit_processSEXP, SEXP silencing_baseSEXP, SEXP silencing_processSEXP, SEXP dropout_baseSEXP, SEXP dropout_multSEXP, SEXP edit_probsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type parent(parentSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type child(childSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type tips(tipsSEXP);
+    Rcpp::traits::input_parameter< int >::type n_barcodes(n_barcodesSEXP);
+    Rcpp::traits::input_parameter< int >::type n_sites(n_sitesSEXP);
+    Rcpp::traits::input_parameter< bool >::type sequential(sequentialSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type edit_base(edit_baseSEXP);
+    Rcpp::traits::input_parameter< List >::type edit_process(edit_processSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type silencing_base(silencing_baseSEXP);
+    Rcpp::traits::input_parameter< List >::type silencing_process(silencing_processSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type dropout_base(dropout_baseSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type dropout_mult(dropout_multSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type edit_probs(edit_probsSEXP);
+    rcpp_result_gen = Rcpp::wrap(sim_barcodes_cpp(parent, child, tips, n_barcodes, n_sites, sequential, edit_base, edit_process, silencing_base, silencing_process, dropout_base, dropout_mult, edit_probs));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_scTreeSim_sim_adb_loop_cpp", (DL_FUNC) &_scTreeSim_sim_adb_loop_cpp, 7},
     {"_scTreeSim_sim_adb_origin_loop_cpp", (DL_FUNC) &_scTreeSim_sim_adb_origin_loop_cpp, 7},
+    {"_scTreeSim_sim_barcodes_cpp", (DL_FUNC) &_scTreeSim_sim_barcodes_cpp, 13},
     {NULL, NULL, 0}
 };
 

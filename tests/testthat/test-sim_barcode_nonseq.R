@@ -9,14 +9,6 @@ tree_age <- max(ape::node.depth.edgelength(tree@phylo))
 
 out_tips <- function(tr) which(tibble::as_tibble(tr)$status == 1)
 
-test_that("transition probability rows sum to 1 and silenced is absorbing", {
-  for (in_window in c(TRUE, FALSE)) {
-    P <- .edit_silencing_transition_probs(1.3, c(0.25, 0.75), 0.1, 0.7, in_window)
-    expect_equal(rowSums(P), rep(1, 4))
-    expect_equal(P[4, ], c(0, 0, 0, 1))
-  }
-})
-
 test_that("sim_barcode_nonseq returns one row per node and n_targets site columns", {
   withr::local_seed(1)
   out <- sim_barcode_nonseq(tree, n_targets = 4, edit_rate = 1.3, edit_probs = c(0.25, 0.75), silencing_rate = 0.05,

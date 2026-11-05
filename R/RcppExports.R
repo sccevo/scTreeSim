@@ -9,3 +9,7 @@ sim_adb_origin_loop_cpp <- function(origin_time, scale, shape, death_prob, asym_
     .Call(`_scTreeSim_sim_adb_origin_loop_cpp`, origin_time, scale, shape, death_prob, asym_trans_prob, sym_trans_prob, origin_type)
 }
 
+sim_barcodes_cpp <- function(parent, child, tips, n_barcodes, n_sites, sequential, edit_base, edit_process, silencing_base, silencing_process, dropout_base, dropout_mult, edit_probs) {
+    .Call(`_scTreeSim_sim_barcodes_cpp`, parent, child, tips, n_barcodes, n_sites, sequential, edit_base, edit_process, silencing_base, silencing_process, dropout_base, dropout_mult, edit_probs)
+}
+

@@ -3,16 +3,25 @@
 # It carries its breakpoints (the simulator splits branches there) and
 # max(a, b), an upper bound of g on a piece [a, b] containing no breakpoint
 # (needed for thinning).
+# All profiles except rate_fn() also carry `pexp`, the closed form
+# g(t) = values[findInterval(t, breaks) + 1] * exp(-decay * t) (piecewise constant times an exponential
+# decay), which the simulator integrates over a branch instead of thinning.
 
-.rate_profile <- function(g, breaks, max) {
-  structure(list(g = g, breaks = breaks, max = max), class = "rate_profile")
+.rate_profile <- function(g, breaks, max, pexp = NULL) {
+  structure(list(g = g, breaks = breaks, max = max, pexp = pexp), class = "rate_profile")
+}
+
+.pexp <- function(breaks = numeric(0), values = 1, decay = 0) {
+  list(breaks = breaks, values = values, decay = decay)
 }
 
 #' Time profiles of rates
 #'
 #' Multipliers `g(t) >= 0` of a base rate (see [barcode_rate()]) as a function of the
 #' time `t` since the origin of the tree, for the generic barcode simulator
-#' [sim_barcode_generic()]. The simulator draws events by thinning: branches are cut at the
+#' [sim_barcode_generic()]. Only the integral of the rate over a branch matters for the state at
+#' its end, which the simulator computes in closed form for all profiles except `rate_fn()` (also inside
+#' `rate_product()`). Those are simulated by thinning instead, which is slower: branches are cut at the
 #' breakpoints of a profile, and candidate events are accepted with probability `g(t)` divided by its
 #' maximum on the piece.
 #'
@@ -43,7 +52,7 @@ NULL
 #' @rdname rate_profiles
 #' @export
 rate_constant <- function() {
-  .rate_profile(function(t) 1, numeric(0), function(a, b) 1)
+  .rate_profile(function(t) 1, numeric(0), function(a, b) 1, .pexp())
 }
 
 #' @rdname rate_profiles
@@ -51,7 +60,7 @@ rate_constant <- function() {
 rate_window <- function(start, end) {
   stopifnot(is.numeric(start), is.numeric(end), length(start) == 1, length(end) == 1, start <= end)
   g <- function(t) as.numeric(t >= start & t < end)
-  .rate_profile(g, c(start, end), function(a, b) g((a + b) / 2))
+  .rate_profile(g, c(start, end), function(a, b) g((a + b) / 2), .pexp(c(start, end), c(0, 1, 0)))
 }
 
 #' @rdname rate_profiles
@@ -59,7 +68,7 @@ rate_window <- function(start, end) {
 rate_exp_decay <- function(half_life) {
   stopifnot(is.numeric(half_life), length(half_life) == 1, half_life > 0)
   g <- function(t) 2^(-t / half_life)
-  .rate_profile(g, numeric(0), function(a, b) g(a))
+  .rate_profile(g, numeric(0), function(a, b) g(a), .pexp(decay = log(2) / half_life))
 }
 
 #' @rdname rate_profiles
@@ -70,7 +79,7 @@ rate_piecewise <- function(breaks, values) {
     is.numeric(values), length(values) == length(breaks) + 1, all(values >= 0)
   )
   g <- function(t) values[findInterval(t, breaks) + 1L]
-  .rate_profile(g, breaks, function(a, b) g((a + b) / 2))
+  .rate_profile(g, breaks, function(a, b) g((a + b) / 2), .pexp(breaks, values))
 }
 
 #' @rdname rate_profiles
@@ -86,10 +95,21 @@ rate_product <- function(...) {
   profiles <- list(...)
   stopifnot(length(profiles) >= 1, all(vapply(profiles, inherits, logical(1), "rate_profile")))
   # breakpoints are pooled, so on a piece between them every factor is within its own bound
+  breaks <- sort(unique(unlist(lapply(profiles, `[[`, "breaks"))))
+  # closed form if every factor has one: the product of the factors on each interval
+  # [breaks[k - 1], breaks[k]), evaluated at its left end, and the sum of the decays
+  specs <- lapply(profiles, `[[`, "pexp")
+  pexp <- if (!any(vapply(specs, is.null, logical(1)))) {
+    left <- c(-Inf, sort(unique(unlist(lapply(specs, `[[`, "breaks")))))
+    .pexp(left[-1],
+          Reduce(`*`, lapply(specs, function(s) s$values[findInterval(left, s$breaks) + 1L])),
+          sum(vapply(specs, `[[`, numeric(1), "decay")))
+  }
   .rate_profile(
     function(t) Reduce(`*`, lapply(profiles, function(p) p$g(t))),
-    sort(unique(unlist(lapply(profiles, `[[`, "breaks")))),
-    function(a, b) prod(vapply(profiles, function(p) p$max(a, b), numeric(1)))
+    breaks,
+    function(a, b) prod(vapply(profiles, function(p) p$max(a, b), numeric(1))),
+    pexp
   )
 }
 
@@ -166,4 +186,44 @@ barcode_rate <- function(base, time = NULL, by_type = NULL) {
 # multiplier of a rate on a branch ending in a node of the given type
 .type_multiplier <- function(rate, type) {
   if (is.null(rate$by_type)) 1 else rate$by_type[type + 1]
+}
+
+# Integral of a closed-form profile (`pexp`) over each branch [t0, t1] (vectorised over branches)
+.profile_integral <- function(pexp, t0, t1) {
+  lo <- c(-Inf, pexp$breaks)
+  hi <- c(pexp$breaks, Inf)
+  total <- numeric(length(t0))
+  for (k in seq_along(pexp$values)) {
+    if (pexp$values[k] == 0) next
+    a <- pmax(t0, lo[k])
+    b <- pmin(t1, hi[k])
+    inside <- b > a
+    a <- a[inside]
+    b <- b[inside]
+    piece <- if (pexp$decay == 0) b - a else exp(-pexp$decay * a) * -expm1(-pexp$decay * (b - a)) / pexp$decay
+    total[inside] <- total[inside] + pexp$values[k] * piece
+  }
+  total
+}
+
+# A rate (editing or silencing) on every branch, as passed to sim_barcodes_cpp(): the branch ending in
+# node i spans [t0[i], t1[i]] (time since the origin), and its type multiplies the rate by mult[i].
+# Closed-form profiles give the integrated rate of each branch; otherwise each branch is cut at the
+# breakpoints of the profile into pieces with their bounds, for thinning.
+.rate_process <- function(rate, t0, t1, mult) {
+  profile <- rate$time
+  if (!is.null(profile$pexp)) {
+    return(list(scale = mult * .profile_integral(profile$pexp, t0, t1), g = NULL))
+  }
+  pieces <- lapply(seq_along(t0), function(i) {
+    cuts <- sort(unique(c(t0[i], t1[i], profile$breaks)))
+    cuts <- cuts[cuts >= t0[i] & cuts <= t1[i]]
+    a <- cuts[-length(cuts)]
+    b <- cuts[-1]
+    list(start = a, end = b, max = as.numeric(mapply(profile$max, a, b)))
+  })
+  n_pieces <- vapply(pieces, function(p) length(p$start), integer(1))
+  list(scale = mult, g = profile$g, ptr = c(0L, cumsum(n_pieces)),
+       start = unlist(lapply(pieces, `[[`, "start")), end = unlist(lapply(pieces, `[[`, "end")),
+       max = unlist(lapply(pieces, `[[`, "max")))
 }
