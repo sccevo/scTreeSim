@@ -8,41 +8,12 @@
 .gt16_allele2 <- rep(seq_along(.gt16_nucleotides), times = 4)
 
 #' GT16 diploid nucleotide SNV simulator
-#'
-#' Simulates diploid single-nucleotide variants along a fixed tree under the
-#' GT16 model. The 16 states are the *ordered* pairs of nucleotides
-#' \code{AA, AC, AG, AT, CA, CC, ..., TT}, i.e. one entry per allele copy, so
-#' \code{AG} and \code{GA} are distinct states and are not collapsed. Each
-#' site evolves independently down the tree.
-#'
 #' @details
-#' **Events.** A substitution changes exactly one allele copy, so every
-#' genotype has six immediate neighbours: from \code{AG} they are
-#' \code{CG, GG, TG} (first allele) and \code{AA, AC, AT} (second).
-#' \code{AG -> CT} has an instantaneous rate of zero, but is still reachable
-#' over a branch through two events.
-#'
-#' **Rates.** For genotypes \eqn{i, j} differing at exactly one allele,
-#' \eqn{Q_{ij} = R_{ij} \pi_j}, where \eqn{R_{ij}} is the exchangeability of
-#' the two differing nucleotides; all other off-diagonal entries are zero and
-#' \eqn{Q_{ii} = -\sum_{j \neq i} Q_{ij}}. \eqn{Q} is rescaled so that one
-#' unit of branch length is one expected substitution.
-#'
-#' **Branch algorithm.** Rather than forming \eqn{P(t) = \exp(Qt)} for every
-#' branch, the chain is simulated event by event. Each site starts the branch
-#' in the genotype inherited from its parent; its total outgoing rate \eqn{R}
-#' gives a waiting time \eqn{\Delta t \sim \mathrm{Exp}(R)}. If \eqn{\Delta t}
-#' overruns the remaining branch time the genotype passes unchanged to the
-#' child, otherwise an event fires with probability \eqn{r_k / R} and the rest
-#' of the branch is simulated the same way. A branch may therefore carry zero,
-#' one or many substitutions. The result is equivalent to the GT16 transition
-#' model; note that the rate normalization matters, since a common factor
-#' cancels when choosing *which* event fires but not in the waiting time.
-#'
-#' **Error model.** `epsilon` and `delta` are applied *after* the evolutionary
-#' simulation, to the tips only, following equation (2) of Chen et al. (2022).
-#' They never feed back into the substitution process: the true genotypes are
-#' returned alongside the observed ones.
+#' Simulates diploid single-nucleotide variants along a fixed tree under the
+#' GT16 model. The 16 states are the ordered pairs of nucleotides
+#' \code{AA, AC, AG, AT, CA, CC, ..., TT}
+#' Rather than forming \eqn{P(t) = \exp(Qt)} for every
+#' branch, the chain is simulated event by event.
 #'
 #' The GT16 model is due to Kozlov et al. (2022), CellPhy, Genome Biology 23,
 #' 37. The error model and the code logic here are adapted from Chen, K.,
