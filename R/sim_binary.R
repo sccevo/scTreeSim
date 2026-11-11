@@ -32,11 +32,11 @@
 #'   \code{node}, \code{binary_1}, ..., \code{binary_m}. Each entry is a
 #'   length-l string with sites separated by "_".
 #' @export
-sim_binary_ontree <- function(tree, l, lambda = 1, m = 1,
-                              lambda_vec = NULL, root_seq = NULL,
-                              clock_rate = 1,
-                              gamma_spike = FALSE, spike_mean = 0.01, spike_shape = 2,
-                              alpha = 0, beta = 0) {
+sim_binary <- function(tree, l, lambda = 1, m = 1,
+                       lambda_vec = NULL, root_seq = NULL,
+                       clock_rate = 1,
+                       gamma_spike = FALSE, spike_mean = 0.01, spike_shape = 2,
+                       alpha = 0, beta = 0) {
 
   stopifnot(methods::is(tree, "treedata"))
   stopifnot(l >= 1L, lambda > 0, clock_rate > 0)
@@ -172,7 +172,7 @@ sim_binary_ontree <- function(tree, l, lambda = 1, m = 1,
 # gamma-distributed burst of extra mutation, added only on branches whose
 # child node marks a division event
 .evolutionary_distance <- function(branch_length, clock_rate, division_occurred,
-                                   gamma_spike, spike_mean, spike_shape) {
+                            gamma_spike, spike_mean, spike_shape) {
   gradual <- clock_rate * branch_length
   spike <- if (gamma_spike && division_occurred) {
     spike_mean * stats::rgamma(1, shape = spike_shape, rate = spike_shape)

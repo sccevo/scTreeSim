@@ -166,8 +166,8 @@ gamma-distributed mutation spikes at branches where a division occurred,
 and optional false positive/negative error at the tips.
 
 ```{r}
-bc_binary <- sim_binary_ontree(mt_tree, l = 10, gamma_spike = TRUE,
-                               spike_mean = 0.3, spike_shape = 2,
-                               alpha = 0.05, beta = 0.02)
+bc_binary <- sim_binary(mt_tree, l = 10, gamma_spike = TRUE,
+                        spike_mean = 0.3, spike_shape = 2,
+                        alpha = 0.05, beta = 0.02)
 head(bc_binary)
 ```
