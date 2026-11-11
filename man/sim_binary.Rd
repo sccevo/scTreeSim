@@ -2,19 +2,15 @@
 % Please edit documentation in R/sim_binary.R
 \name{sim_binary}
 \alias{sim_binary}
-\title{Binary substitution model along a tree, with error and gamma spikes}
+\title{Binary sequence evolution along a tree}
 \usage{
 sim_binary(
   tree,
-  l,
+  n_sites,
+  n_sequences = 1,
   lambda = 1,
-  m = 1,
-  lambda_vec = NULL,
-  root_seq = NULL,
-  clock_rate = 1,
-  gamma_spike = FALSE,
-  spike_mean = 0.01,
-  spike_shape = 2,
+  origin_seq = NULL,
+  clock = clock_strict(),
   alpha = 0,
   beta = 0
 )
@@ -22,47 +18,37 @@ sim_binary(
 \arguments{
 \item{tree}{a treedata object}
 
-\item{l}{sequence length (number of binary sites)}
+\item{n_sites}{number of binary sites per sequence}
 
-\item{lambda}{rate parameter for the Q matrix}
+\item{n_sequences}{number of independent sequences per node}
 
-\item{m}{number of independent binary sequences per node}
+\item{lambda}{rate of back-mutation 1 -> 0 relative to mutation 0 -> 1, i.e.
+\eqn{Q = [-1, 1; \lambda, -\lambda]} before scaling; length 1 or \code{n_sequences}}
 
-\item{lambda_vec}{optional vector of length m, one lambda per copy}
+\item{origin_seq}{optional vector of 0s and 1s of length \code{n_sites}, the sequence at the origin;
+\code{NULL} (default) = drawn from the equilibrium of each sequence}
 
-\item{root_seq}{optional integer vector of length l, 1 = "0", 2 = "1"}
-
-\item{clock_rate}{substitution rate applied per unit branch length}
-
-\item{gamma_spike}{if TRUE, add extra mutation at branches where a
-division occurred}
-
-\item{spike_mean}{mean of the gamma-distributed spike size}
-
-\item{spike_shape}{shape of the gamma-distributed spike size}
+\item{clock}{a clock model, e.g. \code{\link[=clock_strict]{clock_strict()}}, drawn once and shared by all sequences;
+\code{NULL} = use the \code{distance} column of \code{tree} (see \code{\link[=clock_tree]{clock_tree()}})}
 
 \item{alpha}{false negative rate (P(observed 0 | true 1))}
 
 \item{beta}{false positive rate (P(observed 1 | true 0))}
 }
 \value{
-A data frame with one row per node and one column per binary copy:
-\code{node}, \code{binary_1}, ..., \code{binary_m}. Each entry is a
-length-l string with sites separated by "_".
+A data frame with one row per node and one column per sequence: \code{node}, \code{binary_1}, ...,
+\verb{binary_<n_sequences>}. Each entry is a string of \code{n_sites} characters "0"/"1".
 }
 \description{
-The binary model and the respective code logic has been adapted from
-BEAST phylonco paper and software as cited below.
-Paper: Chen, K., Moravec, J. C., Gavryushkin, A., Welch, D., & Drummond, A. J. (2022).
-Accounting for errors in data improves divergence time estimates in single-cell cancer evolution.
-Molecular biology and evolution, 39(8), msac143.
-Beast phylonco software: A BEAST2 package for single-cell phylogenetic analysis of cancer evolution.
-source: https://github.com/bioDS/beast-phylonco-paper/tree/main
+Simulates one or more binary sequences along a fixed tree under a 2-state substitution model,
+with optional false positive/negative error at the tips. Each site evolves independently with
+transition matrix \eqn{P(d) = \exp(Qd)}, where \eqn{d} is the evolutionary distance of a
+branch under the clock model and \eqn{Q} is scaled to one expected substitution per site per
+unit of distance.
 }
 \details{
-Simulates one or more binary character sequences along a fixed tree under
-a general binary substitution model. Each site evolves independently with
-transition matrix \eqn{P(t) = \exp(Qt)}. Optionally adds a gamma-distributed
-burst of extra mutation at branches where a division occurred (status == 2
-in tree@data), and applies false positive/negative error at the tips.
+The binary model is adapted from the BEAST2 package phylonco:
+Chen, K., Moravec, J. C., Gavryushkin, A., Welch, D., & Drummond, A. J. (2022).
+Accounting for errors in data improves divergence time estimates in single-cell cancer evolution.
+Molecular Biology and Evolution, 39(8), msac143.
 }

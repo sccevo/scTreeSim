@@ -159,15 +159,13 @@ expr %>%
   ggplot2::labs(x = "type", y = "expression at the tips")
 ```
 
-# Binary trait, with error and division-triggered spikes
+# Binary trait, with error
 
-A binary trait evolving under a 2-state CTMC, with optional
-gamma-distributed mutation spikes at branches where a division occurred,
-and optional false positive/negative error at the tips.
+A binary trait evolving under a 2-state CTMC along the tree, with a strict
+clock and false positive/negative error at the tips.
 
 ```{r}
-bc_binary <- sim_binary(mt_tree, l = 10, gamma_spike = TRUE,
-                        spike_mean = 0.3, spike_shape = 2,
+bc_binary <- sim_binary(mt_tree, n_sites = 10, clock = clock_strict(0.5),
                         alpha = 0.05, beta = 0.02)
 head(bc_binary)
 ```

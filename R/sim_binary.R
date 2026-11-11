@@ -1,188 +1,99 @@
-#' Binary substitution model along a tree, with error and gamma spikes
-#' 
-#' The binary model and the respective code logic has been adapted from 
-#' BEAST phylonco paper and software as cited below.
-#' Paper: Chen, K., Moravec, J. C., Gavryushkin, A., Welch, D., & Drummond, A. J. (2022). 
-#' Accounting for errors in data improves divergence time estimates in single-cell cancer evolution. 
-#' Molecular biology and evolution, 39(8), msac143.
-#' Beast phylonco software: A BEAST2 package for single-cell phylogenetic analysis of cancer evolution.
-#' source: https://github.com/bioDS/beast-phylonco-paper/tree/main
+#' Binary sequence evolution along a tree
 #'
-#' Simulates one or more binary character sequences along a fixed tree under
-#' a general binary substitution model. Each site evolves independently with
-#' transition matrix \eqn{P(t) = \exp(Qt)}. Optionally adds a gamma-distributed
-#' burst of extra mutation at branches where a division occurred (status == 2
-#' in tree@data), and applies false positive/negative error at the tips.
+#' Simulates one or more binary sequences along a fixed tree under a 2-state substitution model,
+#' with optional false positive/negative error at the tips. Each site evolves independently with
+#' transition matrix \eqn{P(d) = \exp(Qd)}, where \eqn{d} is the evolutionary distance of a
+#' branch under the clock model and \eqn{Q} is scaled to one expected substitution per site per
+#' unit of distance.
+#'
+#' The binary model is adapted from the BEAST2 package phylonco:
+#' Chen, K., Moravec, J. C., Gavryushkin, A., Welch, D., & Drummond, A. J. (2022).
+#' Accounting for errors in data improves divergence time estimates in single-cell cancer evolution.
+#' Molecular Biology and Evolution, 39(8), msac143.
 #'
 #' @param tree a treedata object
-#' @param l sequence length (number of binary sites)
-#' @param lambda rate parameter for the Q matrix
-#' @param m number of independent binary sequences per node
-#' @param lambda_vec optional vector of length m, one lambda per copy
-#' @param root_seq optional integer vector of length l, 1 = "0", 2 = "1"
-#' @param clock_rate substitution rate applied per unit branch length
-#' @param gamma_spike if TRUE, add extra mutation at branches where a
-#'   division occurred
-#' @param spike_mean mean of the gamma-distributed spike size
-#' @param spike_shape shape of the gamma-distributed spike size
+#' @param n_sites number of binary sites per sequence
+#' @param n_sequences number of independent sequences per node
+#' @param lambda rate of back-mutation 1 -> 0 relative to mutation 0 -> 1, i.e.
+#'   \eqn{Q = [-1, 1; \lambda, -\lambda]} before scaling; length 1 or `n_sequences`
+#' @param origin_seq optional vector of 0s and 1s of length `n_sites`, the sequence at the origin;
+#'   `NULL` (default) = drawn from the equilibrium of each sequence
+#' @param clock a clock model, e.g. [clock_strict()], drawn once and shared by all sequences;
+#'   `NULL` = use the `distance` column of `tree` (see [clock_tree()])
 #' @param alpha false negative rate (P(observed 0 | true 1))
 #' @param beta false positive rate (P(observed 1 | true 0))
 #'
-#' @return A data frame with one row per node and one column per binary copy:
-#'   \code{node}, \code{binary_1}, ..., \code{binary_m}. Each entry is a
-#'   length-l string with sites separated by "_".
+#' @return A data frame with one row per node and one column per sequence: `node`, `binary_1`, ...,
+#'   `binary_<n_sequences>`. Each entry is a string of `n_sites` characters "0"/"1".
 #' @export
-sim_binary <- function(tree, l, lambda = 1, m = 1,
-                       lambda_vec = NULL, root_seq = NULL,
-                       clock_rate = 1,
-                       gamma_spike = FALSE, spike_mean = 0.01, spike_shape = 2,
-                       alpha = 0, beta = 0) {
-
+sim_binary <- function(tree, n_sites, n_sequences = 1, lambda = 1, origin_seq = NULL,
+                       clock = clock_strict(), alpha = 0, beta = 0) {
   stopifnot(methods::is(tree, "treedata"))
-  stopifnot(l >= 1L, lambda > 0, clock_rate > 0)
-  stopifnot(spike_mean >= 0, spike_shape > 0)
+  stopifnot(n_sites >= 1L, n_sequences >= 1L)
+  stopifnot(is.numeric(lambda), length(lambda) %in% c(1, n_sequences), all(lambda > 0))
+  stopifnot(is.null(clock) || inherits(clock, "clock_model"))
   stopifnot(alpha >= 0, alpha <= 1, beta >= 0, beta <= 1)
+  lambda <- rep_len(lambda, n_sequences)
 
-  # a single shared lambda can stand in for all m independent copies
-  if (is.null(lambda_vec)) lambda_vec <- rep(lambda, m)
-  stopifnot(length(lambda_vec) == m, all(lambda_vec > 0))
-
-  if (!is.null(root_seq)) {
-    stopifnot(length(root_seq) == l, all(root_seq %in% c(1L, 2L)))
+  if (!is.null(origin_seq)) {
+    stopifnot(length(origin_seq) == n_sites, all(origin_seq %in% c(0L, 1L)))
   }
 
-  tree_df <- tree %>% tibble::as_tibble() %>% as.data.frame()
-  root <- tree_df$node[tree_df$parent == tree_df$node]
-  stopifnot(length(root) == 1)
+  # one clock draw for all sequences
+  if (!is.null(clock)) tree <- clock_tree(tree, clock)
+  d <- .node_distances(tree)
 
-  # heights are measured as time since the present
-  depth_from_root <- ape::node.depth.edgelength(tree@phylo)
-  heights <- max(depth_from_root) - depth_from_root
-  order_df <- tree_df[order(-heights[tree_df$node]), ]
+  # edges in cladewise order, so every parent is simulated before its children
+  edges <- ape::reorder.phylo(tree@phylo, order = "cladewise")$edge
+  n_tips <- ape::Ntip(tree@phylo)
+  root <- n_tips + 1
+  nodes <- tibble::as_tibble(tree)$node
 
-  root_edge <- tree@phylo$root.edge
-  origin_height <- if (!is.null(root_edge)) heights[root] + root_edge else heights[root]
+  out <- data.frame(node = nodes)
+  for (k in seq_len(n_sequences)) {
+    lam <- lambda[k]
 
-  status_at <- stats::setNames(tree_df$status, tree_df$node)
-  tip_nodes <- tree_df$node[tree_df$status == 1]
-
-  binary_cols <- vector("list", m)
-  for (bc in seq_len(m)) {
-    lam <- lambda_vec[bc]
-    pi <- .binary_pi(lam)
-
-    # draw the root sequence from the equilibrium distribution unless the
-    # caller supplied a fixed starting sequence
-    state_at <- list()
-    state_at[[as.character(root)]] <- if (is.null(root_seq)) {
-      .generate_binary_seq(l, pi)
-    } else {
-      as.integer(root_seq)
+    # node x site matrix of states 0/1; the origin sequence evolves along the root edge
+    states <- matrix(NA_integer_, length(d), n_sites)
+    start <- if (is.null(origin_seq)) stats::rbinom(n_sites, 1, .binary_pi(lam)[2]) else origin_seq
+    states[root, ] <- .mutate_binary_seq(as.integer(start), lam, d[root])
+    for (i in seq_len(nrow(edges))) {
+      states[edges[i, 2], ] <- .mutate_binary_seq(states[edges[i, 1], ], lam, d[edges[i, 2]])
     }
 
-    # evolve along the origin-to-root edge first, if the tree has one
-    if (!is.null(root_edge) && root_edge > 0) {
-      dist <- .evolutionary_distance(
-        root_edge, clock_rate, division_occurred = status_at[[as.character(root)]] == 2,
-        gamma_spike, spike_mean, spike_shape
-      )
-      P <- .binary_transition_probs(lam, dist)
-      state_at[[as.character(root)]] <- .mutate_binary_seq(state_at[[as.character(root)]], P)
-    }
-
-    # then walk every remaining branch from parent to child, adding a
-    # spike whenever the child node is where a division took place
-    for (i in seq_len(nrow(order_df))) {
-      node <- order_df$node[i]
-      if (node == root) next
-      parent <- order_df$parent[i]
-      branch_length <- heights[parent] - heights[node]
-
-      dist <- .evolutionary_distance(
-        branch_length, clock_rate, division_occurred = status_at[[as.character(node)]] == 2,
-        gamma_spike, spike_mean, spike_shape
-      )
-      P <- .binary_transition_probs(lam, dist)
-      state_at[[as.character(node)]] <- .mutate_binary_seq(state_at[[as.character(parent)]], P)
-    }
-
-    # false positive/negative error is a measurement effect, so it is only
-    # applied to the tips, after the true evolutionary process is done
+    # error is a measurement effect at the tips, after evolution
     if (alpha > 0 || beta > 0) {
-      for (nd in tip_nodes) {
-        key <- as.character(nd)
-        state_at[[key]] <- .add_error(state_at[[key]], alpha, beta)
-      }
+      for (tip in seq_len(n_tips)) states[tip, ] <- .add_error(states[tip, ], alpha, beta)
     }
 
-    binary_cols[[bc]] <- vapply(
-      tree_df$node,
-      function(nd) paste(.translate_binary_seq(state_at[[as.character(nd)]]), collapse = "_"),
-      character(1)
-    )
+    out[[paste0("binary_", k)]] <- apply(states[nodes, , drop = FALSE], 1, paste, collapse = "")
   }
-
-  out <- data.frame(node = tree_df$node)
-  for (bc in seq_len(m)) out[[paste0("binary_", bc)]] <- binary_cols[[bc]]
   out
 }
 
-.binary_states <- c("0", "1")
-
-# equilibrium frequencies implied by lambda: state "0" has frequency
-# lambda / (lambda + 1), state "1" has the remainder
+# equilibrium frequencies of states 0 and 1
 .binary_pi <- function(lambda) {
   c(lambda / (lambda + 1), 1 / (lambda + 1))
 }
 
-# closed-form P(t) = exp(Qt) for the normalized 2-state CTMC, so no matrix
-# exponential needs to be computed at simulation time
-.binary_transition_probs <- function(lambda, t) {
-  if (t <= 0) return(diag(2))
-
+# Probability that a site in state s (0 or 1) is in the other state after distance d (vectorised
+# over s and d). Closed form of exp(Qd): the other state's equilibrium frequency times
+# 1 - exp(-r d), with r = q01 + q10 = 1 / (2 pi0 pi1) for one expected substitution per unit d.
+.binary_flip_prob <- function(lambda, s, d) {
   pi <- .binary_pi(lambda)
-  beta <- 1 / (pi[1] + pi[2] * lambda)
-  rate <- beta * (1 + lambda)
-  decay <- exp(-rate * t)
-
-  P <- matrix(0, 2, 2)
-  for (i in seq_len(2)) {
-    for (j in seq_len(2)) {
-      P[i, j] <- pi[j] + decay * ((i == j) - pi[j])
-    }
-  }
-  P
+  r <- 1 / (2 * pi[1] * pi[2])
+  other <- 1L - s
+  pi[other + 1L] * (1 - exp(-r * d))
 }
 
-# draw a starting sequence of length l from the equilibrium distribution
-.generate_binary_seq <- function(l, pi) {
-  sample.int(2, l, replace = TRUE, prob = pi)
+# flip each site independently with its flip probability
+.mutate_binary_seq <- function(seq, lambda, d) {
+  flip <- stats::runif(length(seq)) < .binary_flip_prob(lambda, seq, d)
+  seq[flip] <- 1L - seq[flip]
+  seq
 }
 
-# draw each site's next state independently from the same transition matrix
-.mutate_binary_seq <- function(seq, P) {
-  vapply(seq, function(s) sample.int(2, 1, prob = P[s, ]), integer(1))
-}
-
-.translate_binary_seq <- function(seq) {
-  .binary_states[seq]
-}
-
-# combines the ordinary clock-driven branch length with an optional
-# gamma-distributed burst of extra mutation, added only on branches whose
-# child node marks a division event
-.evolutionary_distance <- function(branch_length, clock_rate, division_occurred,
-                            gamma_spike, spike_mean, spike_shape) {
-  gradual <- clock_rate * branch_length
-  spike <- if (gamma_spike && division_occurred) {
-    spike_mean * stats::rgamma(1, shape = spike_shape, rate = spike_shape)
-  } else {
-    0
-  }
-  gradual + spike
-}
-
-# rows are the observed state, columns are the true state, so column s
+# rows are the observed state, columns are the true state (0, 1), so column s + 1
 # gives the probability of observing each state given true state s
 .error_matrix <- function(alpha, beta) {
   matrix(c(1 - beta, alpha, beta, 1 - alpha), nrow = 2, byrow = TRUE)
@@ -192,5 +103,5 @@ sim_binary <- function(tree, l, lambda = 1, m = 1,
 # already-simulated sequence
 .add_error <- function(seq, alpha, beta) {
   M <- .error_matrix(alpha, beta)
-  vapply(seq, function(s) sample.int(2, 1, prob = M[, s]), integer(1))
+  vapply(seq, function(s) sample.int(2, 1, prob = M[, s + 1L]) - 1L, integer(1))
 }
