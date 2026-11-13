@@ -23,6 +23,7 @@ export(sim_barcode_seq)
 export(sim_binary)
 export(sim_expression_ou)
 export(sim_gt16_nt_diploid)
+export(spike)
 importFrom(Rcpp,sourceCpp)
 importFrom(magrittr,"%>%")
 importFrom(stats,

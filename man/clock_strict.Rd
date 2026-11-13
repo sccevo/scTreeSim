@@ -4,10 +4,12 @@
 \alias{clock_strict}
 \title{Strict clock}
 \usage{
-clock_strict(rate = 1)
+clock_strict(rate = 1, spike = NULL)
 }
 \arguments{
 \item{rate}{substitutions per site per unit of time, non-negative}
+
+\item{spike}{optional division-triggered spikes, see \code{\link[=spike]{spike()}}}
 }
 \value{
 an object of class \code{clock_model}, see \code{\link[=clock_tree]{clock_tree()}}
@@ -19,6 +21,7 @@ All branches evolve at the same \code{rate}, so the evolutionary distance of a b
 \seealso{
 Other clock models:
 \code{\link[=clock_relaxed]{clock_relaxed()}},
-\code{\link[=clock_tree]{clock_tree()}}
+\code{\link[=clock_tree]{clock_tree()}},
+\code{\link[=spike]{spike()}}
 }
 \concept{clock models}

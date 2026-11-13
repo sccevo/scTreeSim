@@ -135,3 +135,89 @@ test_that("a complete distance column is required", {
   ct@data$distance[2] <- NA
   expect_error(distance_tree(ct), "distance")
 })
+
+# ---- spike ----
+
+# number of spikes per branch of the small tree: both internal nodes (root 4, node 5) divide, so
+# every branch except the root edge gets one
+daughter <- c(1, 1, 1, 0, 1)
+
+with_data <- function(...) {
+  tr <- tree
+  cols <- list(...)
+  for (col in names(cols)) tr@data[[col]] <- cols[[col]]
+  tr
+}
+
+test_that("spike validates its inputs", {
+  s <- spike(0.1)
+  expect_s3_class(s, "clock_spike")
+  expect_equal(s[c("mean", "shape", "by_type")], list(mean = 0.1, shape = Inf, by_type = NULL))
+
+  for (bad in list(-1, NA_real_, Inf, c(1, 2), "1")) expect_error(spike(bad), "mean")
+  for (bad in list(0, -1, NA_real_, c(1, 2), "1")) expect_error(spike(0.1, shape = bad), "shape")
+  for (bad in list(-1, numeric(0), "1", NA)) expect_error(spike(0.1, by_type = bad), "by_type")
+
+  expect_error(clock_strict(spike = 0.1), "spike")
+  expect_identical(clock_relaxed(dist = "exponential", spike = s)$spike, s)
+})
+
+test_that("a fixed spike adds `mean` per division on the branches below it, plus hidden divisions", {
+  spk <- clock_strict(0, spike = spike(0.2))
+  expect_equal(distances(clock_strict(0.4, spike = spike(0.2))), 0.4 * lengths + 0.2 * daughter)
+
+  # without `status` every internal node divides; with it only status 2
+  expect_equal(distances(spk, treeio::as.treedata(tree@phylo)), 0.2 * daughter)
+  expect_equal(distances(spk, with_data(status = c(1, 1, 1, 2, 1))), 0.2 * c(0, 0, 1, 0, 1))
+
+  # hidden divisions add to the count, also on the root edge
+  hidden <- c(0, 2, 1, 3, 0)
+  expect_equal(distances(spk, with_data(hidden_divisions = hidden)), 0.2 * (daughter + hidden))
+})
+
+test_that("gamma spikes are one Gamma(N * shape, shape) per branch, drawn after and not scaled by the multipliers", {
+  hidden <- c(0, 2, 1, 3, 0)
+  clk <- clock_relaxed(0.4, dist = "gamma", shape = 3, spike = spike(0.1, shape = 2))
+  expected <- function() {
+    m <- stats::rgamma(5, shape = 3, rate = 3)
+    0.4 * lengths * m + 0.1 * stats::rgamma(5, shape = 2 * (daughter + hidden), rate = 2)
+  }
+  expect_equal(withr::with_seed(1, distances(clk, with_data(hidden_divisions = hidden))),
+               withr::with_seed(1, expected()))
+})
+
+test_that("gamma spikes have mean `mean` and variance mean^2 / shape", {
+  mu <- 0.1
+  shape <- 2
+  clk <- clock_strict(0, spike = spike(mu, shape = shape))
+  s <- withr::with_seed(6, as.vector(replicate(4000, distances(clk)[daughter == 1])))
+  n <- length(s)
+  v <- mu^2 / shape
+  m4 <- 3 * (shape + 2) * mu^4 / shape^2  # 4th central moment of mu * Gamma(shape, rate = shape)
+  expect_within(mean(s), mu, 4 * sqrt(v / n))
+  expect_within(stats::var(s), v, 4 * sqrt((m4 - v^2) / n))
+})
+
+test_that("by_type multiplies the spike by the type of the dividing (parent) node", {
+  # root 4 type 0 is the parent of 3, 5 and the root edge; node 5 type 1 the parent of 1, 2
+  types <- c(0L, 1L, 1L, 0L, 1L)
+  clk <- clock_strict(0, spike = spike(0.1, by_type = c(1, 3)))
+  expect_equal(distances(clk, with_data(type = types)), 0.1 * c(3, 3, 1, 0, 1))
+  expect_equal(distances(clk, with_data(type = types, hidden_divisions = c(0, 2, 1, 3, 0))),
+               0.1 * c(3, 3 * 3, 1 * 2, 1 * 3, 1))
+
+  # types that never divide need no entry (NA or beyond by_type)
+  expect_equal(distances(clock_strict(0, spike = spike(0.1, by_type = c(2, NA))),
+                         with_data(type = c(1L, 1L, 5L, 0L, 0L))), 0.2 * daughter)
+})
+
+test_that("clock_tree refuses missing or negative distances", {
+  clk <- clock_strict(0, spike = spike(0.1, by_type = c(1, 2)))
+  msg <- "missing or negative distances"
+  expect_error(clock_tree(treeio::as.treedata(tree@phylo), clk), msg)            # no type column
+  expect_error(clock_tree(with_data(type = c(0L, 0L, 0L, 0L, NA)), clk), msg)    # dividing node without type
+  expect_error(clock_tree(with_data(type = c(0L, 0L, 0L, 0L, 2L)), clk), msg)    # dividing type beyond by_type
+  expect_error(clock_tree(with_data(type = c(0L, 0L, 0L, 0L, 1L)),
+                          clock_strict(0, spike = spike(0.1, by_type = c(1, NA)))), msg)
+  expect_error(clock_tree(with_data(hidden_divisions = c(0, -2, 0, 0, 0)), clock_strict(0, spike = spike(0.1))), msg)
+})

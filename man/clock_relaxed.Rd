@@ -8,7 +8,8 @@ clock_relaxed(
   rate = 1,
   dist = c("lognormal", "gamma", "exponential"),
   sd = NULL,
-  shape = NULL
+  shape = NULL,
+  spike = NULL
 )
 }
 \arguments{
@@ -19,6 +20,8 @@ clock_relaxed(
 \item{sd}{standard deviation of the log multiplier, non-negative (\code{"lognormal"} only)}
 
 \item{shape}{shape of the multiplier, positive (\code{"gamma"} only)}
+
+\item{spike}{optional division-triggered spikes, see \code{\link[=spike]{spike()}}}
 }
 \value{
 an object of class \code{clock_model}, see \code{\link[=clock_tree]{clock_tree()}}
@@ -39,6 +42,7 @@ continuously and not normalised. \code{sd = 0} is the strict clock.
 \seealso{
 Other clock models:
 \code{\link[=clock_strict]{clock_strict()}},
-\code{\link[=clock_tree]{clock_tree()}}
+\code{\link[=clock_tree]{clock_tree()}},
+\code{\link[=spike]{spike()}}
 }
 \concept{clock models}

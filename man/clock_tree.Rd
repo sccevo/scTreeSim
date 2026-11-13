@@ -21,7 +21,7 @@ a treedata object
 \code{clock_tree()} draws the evolutionary distance (expected substitutions per site) of every branch
 under a clock model and stores it in a \code{distance} column of the tree data, one value per node for
 the branch ending in it (the root's value belongs to the root edge). Branch lengths stay in time
-units. Random clocks give a new draw on every call, so storing the distances lets several
+units. Spikes of the clock (see \code{\link[=spike]{spike()}}) are included. Random clocks and spikes give a new draw on every call, so storing the distances lets several
 simulations share one draw.
 }
 \details{
@@ -30,6 +30,7 @@ simulations share one draw.
 \seealso{
 Other clock models:
 \code{\link[=clock_relaxed]{clock_relaxed()}},
-\code{\link[=clock_strict]{clock_strict()}}
+\code{\link[=clock_strict]{clock_strict()}},
+\code{\link[=spike]{spike()}}
 }
 \concept{clock models}

@@ -86,6 +86,24 @@ test_that("clock = NULL simulates on the distance column of the tree", {
   expect_equal(direct, stored)
 })
 
+test_that("spikes add their distance to the daughter edges of divisions only", {
+  withr::local_seed(8)
+  l <- 4000
+  lambda <- 2
+  s <- 0.15
+  out <- sim_binary(tree, n_sites = l, lambda = lambda, origin_seq = rep(0L, l),
+                    clock = clock_strict(0, spike = spike(s)))
+  states <- site_matrix(out$binary_1)
+
+  # no gradual evolution: the root edge has no spike, every later edge one
+  expect_true(all(states[4, ] == "0"))
+  spikes_from_origin <- c(2, 2, 1, 0, 1)
+  for (nd in c(1, 3, 5)) {
+    p <- p_01(lambda, s * spikes_from_origin[nd])
+    expect_within(mean(states[nd, ] == "1"), p, tolerance_4se(p, l))
+  }
+})
+
 test_that("every node of a sampled tree inherits its parent's sequence when nothing evolves", {
   withr::local_seed(6)
   adb <- sim_adb_origin_samp(10, scale = 1, shape = 1, death_prob = 0.1, sampling_prob = 0.5)
