@@ -22,17 +22,23 @@
 #'   `NULL` = use the `distance` column of `tree` (see [clock_tree()])
 #' @param alpha false negative rate (P(observed 0 | true 1))
 #' @param beta false positive rate (P(observed 1 | true 0))
+#' @param write_as_string if `TRUE` (default), each sequence is returned as one string per node;
+#'   if `FALSE`, as a node x site data frame
 #'
-#' @return A data frame with one row per node and one column per sequence: `node`, `binary_1`, ...,
-#'   `binary_<n_sequences>`. Each entry is a string of `n_sites` characters "0"/"1".
+#' @return if `write_as_string = TRUE`, a data frame with one row per node and one column per
+#'   sequence: `node`, `binary_1`, ..., `binary_<n_sequences>`. Each entry is a string of `n_sites`
+#'   characters "0"/"1".
+#'   If `write_as_string = FALSE`, a named list (`binary_1`, ...) with one data frame per sequence,
+#'   with one row per node and columns `node`, `site_1`, ..., `site_<n_sites>` (integer 0/1).
 #' @export
 sim_binary <- function(tree, n_sites, n_sequences = 1, lambda = 1, origin_seq = NULL,
-                       clock = clock_strict(), alpha = 0, beta = 0) {
+                       clock = clock_strict(), alpha = 0, beta = 0, write_as_string = TRUE) {
   stopifnot(methods::is(tree, "treedata"))
   stopifnot(n_sites >= 1L, n_sequences >= 1L)
   stopifnot(is.numeric(lambda), length(lambda) %in% c(1, n_sequences), all(lambda > 0))
   stopifnot(is.null(clock) || inherits(clock, "clock_model"))
   stopifnot(alpha >= 0, alpha <= 1, beta >= 0, beta <= 1)
+  stopifnot(is.logical(write_as_string), length(write_as_string) == 1, !is.na(write_as_string))
   lambda <- rep_len(lambda, n_sequences)
 
   if (!is.null(origin_seq)) {
@@ -49,7 +55,7 @@ sim_binary <- function(tree, n_sites, n_sequences = 1, lambda = 1, origin_seq = 
   root <- n_tips + 1
   nodes <- tibble::as_tibble(tree)$node
 
-  out <- data.frame(node = nodes)
+  seqs <- vector("list", n_sequences)
   for (k in seq_len(n_sequences)) {
     lam <- lambda[k]
 
@@ -63,12 +69,21 @@ sim_binary <- function(tree, n_sites, n_sequences = 1, lambda = 1, origin_seq = 
 
     # error is a measurement effect at the tips, after evolution
     if (alpha > 0 || beta > 0) {
-      for (tip in seq_len(n_tips)) states[tip, ] <- .add_error(states[tip, ], alpha, beta)
+      tips <- seq_len(n_tips)
+      states[tips, ] <- .add_error(states[tips, , drop = FALSE], alpha, beta)
     }
 
-    out[[paste0("binary_", k)]] <- apply(states[nodes, , drop = FALSE], 1, paste, collapse = "")
+    seqs[[k]] <- states[nodes, , drop = FALSE]
   }
-  out
+  names(seqs) <- paste0("binary_", seq_len(n_sequences))
+
+  if (write_as_string) {
+    return(data.frame(node = nodes, lapply(seqs, apply, 1, paste, collapse = "")))
+  }
+  lapply(seqs, function(m) {
+    colnames(m) <- paste0("site_", seq_len(n_sites))
+    data.frame(node = nodes, m)
+  })
 }
 
 # equilibrium frequencies of states 0 and 1
@@ -93,15 +108,11 @@ sim_binary <- function(tree, n_sites, n_sequences = 1, lambda = 1, origin_seq = 
   seq
 }
 
-# rows are the observed state, columns are the true state (0, 1), so column s + 1
-# gives the probability of observing each state given true state s
-.error_matrix <- function(alpha, beta) {
-  matrix(c(1 - beta, alpha, beta, 1 - alpha), nrow = 2, byrow = TRUE)
-}
-
-# applies false positive/negative error independently to each site of an
-# already-simulated sequence
-.add_error <- function(seq, alpha, beta) {
-  M <- .error_matrix(alpha, beta)
-  vapply(seq, function(s) sample.int(2, 1, prob = M[, s + 1L]) - 1L, integer(1))
+# Observation error on true states (vector or matrix of 0/1, each site independent):
+# a true 1 reads 0 with probability alpha (false negative), a true 0 reads 1 with probability
+# beta (false positive).
+.add_error <- function(states, alpha, beta) {
+  flip <- stats::runif(length(states)) < c(beta, alpha)[states + 1L]
+  states[flip] <- 1L - states[flip]
+  states
 }

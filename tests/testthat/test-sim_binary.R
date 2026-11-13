@@ -27,6 +27,28 @@ test_that("sim_binary returns one string of l sites per node and copy", {
   expect_true(all(grepl("^[01]+$", strings)))
 })
 
+test_that("write_as_string = FALSE returns one integer node x site data frame per copy", {
+  sim <- function(...) withr::with_seed(9, sim_binary(tree, n_sites = 6, n_sequences = 2, lambda = c(1, 3),
+                                                      alpha = 0.1, beta = 0.2, ...))
+  str_out <- sim()
+  df_out <- sim(write_as_string = FALSE)
+
+  expect_named(df_out, c("binary_1", "binary_2"))
+  for (k in names(df_out)) {
+    expect_named(df_out[[k]], c("node", paste0("site_", 1:6)))
+    expect_equal(df_out[[k]]$node, str_out$node)
+    expect_true(all(vapply(df_out[[k]][-1], is.integer, logical(1))))
+    # same draws, so the string form is the pasted data frame
+    expect_equal(apply(df_out[[k]][-1], 1, paste, collapse = ""), str_out[[k]], ignore_attr = TRUE)
+  }
+
+  # one copy with one site: still a list holding a data frame
+  one <- sim_binary(tree, n_sites = 1, write_as_string = FALSE)
+  expect_named(one, "binary_1")
+  expect_named(one$binary_1, c("node", "site_1"))
+  expect_equal(nrow(one$binary_1), nrow(tibble::as_tibble(tree)))
+})
+
 test_that("the root sequence is drawn from the equilibrium of each copy's lambda", {
   withr::local_seed(2)
   l <- 4000
@@ -134,6 +156,15 @@ test_that("alpha and beta flip tip states only", {
   for (tip in 1:3) expect_within(mean(ones[tip, ] == "0"), alpha, tolerance_4se(alpha, l))
 })
 
+test_that("alpha = beta = 1 flips every tip site", {
+  origin_seq <- c(0L, 1L, 1L, 0L, 1L)
+  out <- sim_binary(tree, n_sites = 5, origin_seq = origin_seq, clock = clock_strict(0), alpha = 1, beta = 1,
+                    write_as_string = FALSE)$binary_1
+  sites <- as.matrix(out[-1])
+  for (tip in 1:3) expect_equal(sites[tip, ], 1L - origin_seq, ignore_attr = TRUE)
+  for (nd in 4:5) expect_equal(sites[nd, ], origin_seq, ignore_attr = TRUE)
+})
+
 test_that("invalid inputs are rejected", {
   expect_error(sim_binary(tree@phylo, n_sites = 5))
   expect_error(sim_binary(tree, n_sites = 0))
@@ -144,4 +175,5 @@ test_that("invalid inputs are rejected", {
   expect_error(sim_binary(tree, n_sites = 5, clock = 1))
   expect_error(sim_binary(tree, n_sites = 5, alpha = 1.5))
   expect_error(sim_binary(tree, n_sites = 5, beta = -0.1))
+  expect_error(sim_binary(tree, n_sites = 5, write_as_string = NA))
 })

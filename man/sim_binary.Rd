@@ -12,7 +12,8 @@ sim_binary(
   origin_seq = NULL,
   clock = clock_strict(),
   alpha = 0,
-  beta = 0
+  beta = 0,
+  write_as_string = TRUE
 )
 }
 \arguments{
@@ -34,10 +35,16 @@ sim_binary(
 \item{alpha}{false negative rate (P(observed 0 | true 1))}
 
 \item{beta}{false positive rate (P(observed 1 | true 0))}
+
+\item{write_as_string}{if \code{TRUE} (default), each sequence is returned as one string per node;
+if \code{FALSE}, as a node x site data frame}
 }
 \value{
-A data frame with one row per node and one column per sequence: \code{node}, \code{binary_1}, ...,
-\verb{binary_<n_sequences>}. Each entry is a string of \code{n_sites} characters "0"/"1".
+if \code{write_as_string = TRUE}, a data frame with one row per node and one column per
+sequence: \code{node}, \code{binary_1}, ..., \verb{binary_<n_sequences>}. Each entry is a string of \code{n_sites}
+characters "0"/"1".
+If \code{write_as_string = FALSE}, a named list (\code{binary_1}, ...) with one data frame per sequence,
+with one row per node and columns \code{node}, \code{site_1}, ..., \verb{site_<n_sites>} (integer 0/1).
 }
 \description{
 Simulates one or more binary sequences along a fixed tree under a 2-state substitution model,
