@@ -100,6 +100,9 @@ test_that("the root distance is the root edge, or 0 without one", {
   no_edge <- tree
   no_edge@phylo$root.edge <- NULL
   expect_equal(distances(clock_strict(2), no_edge), 2 * c(1, 1, 1.5, 0, 0.5))
+  # also with hidden divisions on the root row
+  no_edge@data$hidden_divisions <- c(0, 0, 0, 3, 0)
+  expect_equal(distances(clock_strict(0, spike = spike(0.2)), no_edge)[4], 0)
 })
 
 test_that("clock_tree keeps branch lengths in time and the other node data", {

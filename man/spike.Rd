@@ -36,7 +36,7 @@ over-dispersed (variance \code{mu + mu^2 / shape}).
 
 Collapsed trees hide divisions on their branches. An optional \code{hidden_divisions} column of the
 tree data (counts per node, for the branch ending in it) adds that many spikes to a branch,
-including the root edge. Leave it out on trees with single-child nodes (\code{collapse = FALSE}),
+including the root edge if the tree has one. Leave it out on trees with single-child nodes (\code{collapse = FALSE}),
 which show these divisions as nodes.
 }
 \seealso{

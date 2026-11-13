@@ -342,9 +342,9 @@ test_that("the error model changes observations but not the true genotypes", {
   # the evolutionary simulation is untouched by the error parameters
   expect_equal(with_error$true, no_error$true)
 
-  is_tip <- with_error$true$node %in% tree_df$node[tree_df$status == 1]
+  is_tip <- with_error$true$node %in% seq_len(ape::Ntip(tree@phylo))
   expect_true(any(with_error$observed$genotype[is_tip] != with_error$true$genotype[is_tip]))
-  # errors are a measurement effect at the sequenced cells only
+  # errors are a measurement effect at the tips only
   expect_equal(with_error$observed$genotype[!is_tip], with_error$true$genotype[!is_tip])
 })
 
@@ -354,7 +354,7 @@ test_that("observed genotypes at the tips follow the error distribution", {
   out <- withr::with_seed(8, sim_gt16_nt_diploid(tree, origin_seq = c(strrep("A", 3000), strrep("C", 3000)),
                                                  rates = rates, pi = pi, clock = clock_strict(0),
                                                  epsilon = epsilon, delta = delta))
-  tip <- match(tree_df$node[tree_df$status == 1][1], out$true$node)
+  tip <- match(1, out$true$node)
   expect_equal(unique(split_sites(out$true$genotype[tip])[[1]]), "AC")
 
   observed <- table(factor(split_sites(out$observed$genotype[tip])[[1]], levels = scTreeSim:::.gt16_states))

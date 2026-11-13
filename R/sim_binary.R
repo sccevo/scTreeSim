@@ -70,6 +70,7 @@ sim_binary <- function(tree, n_sites, n_sequences = 1, lambda = 1, origin_seq = 
     }
 
     # error is a measurement effect at the tips, after evolution
+    # (the true tip states could also be returned here, as in sim_gt16_nt_diploid)
     if (alpha > 0 || beta > 0) {
       tips <- seq_len(n_tips)
       states[tips, ] <- .add_error(states[tips, , drop = FALSE], alpha, beta)

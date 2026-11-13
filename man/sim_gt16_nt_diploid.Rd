@@ -52,16 +52,14 @@ sequences per node (e.g. "AA" and "GC" for the same genotypes), the form of \cod
 a list of two data frames, \code{true} (the simulated genotypes) and \code{observed} (after the
 error model), each with one row per node and columns \code{node} and \code{genotype}
 (\code{format = "genotype"}) or \code{node}, \code{allele_1} and \code{allele_2} (\code{format = "alleles"}). The error
-model applies to the sampled tips (\code{status == 1}), so \code{observed} equals \code{true} at every other
+model applies to the tips (nodes \verb{1..Ntip}), so \code{observed} equals \code{true} at every internal
 node.
 }
 \description{
-GT16 diploid nucleotide SNV simulator
+Simulates diploid single-nucleotide variants along a fixed tree under the GT16 model.
+The 16 states are the ordered pairs of nucleotides \code{AA, AC, AG, AT, CA, CC, ..., TT}.
 }
 \details{
-Simulates diploid single-nucleotide variants along a fixed tree under the
-GT16 model. The 16 states are the ordered pairs of nucleotides
-\code{AA, AC, AG, AT, CA, CC, ..., TT}.
 Each site evolves independently with transition matrix \eqn{P(d) = \exp(Qd)}, where \eqn{d}
 is the evolutionary distance of a branch under the clock model and \eqn{Q} is scaled to one
 expected substitution per genotype site per unit of distance (a substitution on either allele
@@ -69,13 +67,9 @@ counts). Rather than forming \eqn{P(d)} for every branch, the chain is simulated
 over the distance \eqn{d}. For example, \code{spike(mean = m / n_sites)} adds on average \code{m}
 substitutions over all sites per division.
 
-The GT16 model is due to Kozlov et al. (2022), CellPhy, Genome Biology 23,
-37. The error model and the code logic here are adapted from Chen, K.,
-Moravec, J. C., Gavryushkin, A., Welch, D., & Drummond, A. J. (2022),
-Accounting for errors in data improves divergence time estimates in
-single-cell cancer evolution, Molecular Biology and Evolution 39(8),
-msac143, and the BEAST2 phylonco package
-(https://github.com/bioDS/beast-phylonco-paper).
+The GT16 model and error model are due to
+Kozlov, A., Alves, J.M., Stamatakis, A., Posada, D. (2022) CellPhy: accurate and fast probabilistic inference of single-cell phylogenies from scDNA-seq data. Genome Biology, 23(1):37. https://doi.org/10.1186/s13059-021-02583-w
+Chen, K., Moravec, J. C., Gavryushkin, A., Welch, D., & Drummond, A. J. (2022) Accounting for errors in data improves divergence time estimates in single-cell cancer evolution. Molecular Biology and Evolution, 39(8). https://doi.org/10.1093/molbev/msac143
 }
 \seealso{
 \code{\link[=clock_strict]{clock_strict()}}, \code{\link[=clock_relaxed]{clock_relaxed()}}, \code{\link[=spike]{spike()}} for clock models, \code{\link[=clock_tree]{clock_tree()}} to store

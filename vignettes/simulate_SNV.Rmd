@@ -151,8 +151,8 @@ divisions add the most distance, differ more from each other than the type 0 cel
 
 # Error at the tips
 
-The error model of Chen et al. (2022) has two parameters, which act on the sampled tips
-(`status == 1`) only, after evolution:
+The error model of Chen et al. (2022) has two parameters, which act on the tips only,
+after evolution:
 
 * `epsilon`, **amplification and sequencing error**: the read of an allele shows another nucleotide.
   Each of the six genotypes that differ in one allele is observed with probability `epsilon / 6`

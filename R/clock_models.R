@@ -105,7 +105,7 @@ clock_relaxed <- function(rate = 1, dist = c("lognormal", "gamma", "exponential"
 #'
 #' Collapsed trees hide divisions on their branches. An optional `hidden_divisions` column of the
 #' tree data (counts per node, for the branch ending in it) adds that many spikes to a branch,
-#' including the root edge. Leave it out on trees with single-child nodes (`collapse = FALSE`),
+#' including the root edge if the tree has one. Leave it out on trees with single-child nodes (`collapse = FALSE`),
 #' which show these divisions as nodes.
 #'
 #' @param mean spike per division and daughter branch in expected substitutions per site,
@@ -187,6 +187,8 @@ clock_tree <- function(tree, clock = clock_strict()) {
   d <- numeric(nrow(branches))
   d[branches$node] <- clock$multipliers(branches) * clock$rate * branches$length
   if (!is.null(clock$spike)) d[branches$node] <- d[branches$node] + clock$spike$distances(branches)
+  # no root edge, no evolution on it (hidden divisions on the root row are dropped)
+  if (is.null(tree@phylo$root.edge)) d[ape::Ntip(tree@phylo) + 1L] <- 0
   if (anyNA(d) || any(d < 0)) {
     stop("The clock gave missing or negative distances; check the tree's `type` and ",
          "`hidden_divisions` against the spike's `by_type`.", call. = FALSE)
