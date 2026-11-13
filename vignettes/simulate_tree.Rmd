@@ -159,15 +159,18 @@ expr %>%
   ggplot2::labs(x = "type", y = "expression at the tips")
 ```
 
-# Binary trait, with error and division-triggered spikes
+# Binary trait, with error
 
-A binary trait evolving under a 2-state CTMC, with optional
-gamma-distributed mutation spikes at branches where a division occurred,
-and optional false positive/negative error at the tips.
+A binary trait evolving under a 2-state CTMC along the tree, with a strict
+clock, division-triggered spikes and false positive/negative error at the tips.
+Each daughter branch of a division gets a gamma-distributed spike (mean 0.05 expected
+substitutions per site), three times larger when a type-1 cell divides.
 
 ```{r}
-bc_binary <- sim_binary_ontree(mt_tree, l = 10, gamma_spike = TRUE,
-                               spike_mean = 0.3, spike_shape = 2,
-                               alpha = 0.05, beta = 0.02)
+clk <- clock_strict(0.5, spike = spike(0.05, shape = 2, by_type = c(1, 3)))
+bc_binary <- sim_binary(mt_tree, n_sites = 10, clock = clk, alpha = 0.05, beta = 0.02)
 head(bc_binary)
 ```
+
+See `vignette("simulate_binary")` for the substitution model, the clock models and spikes.
+Diploid SNVs under the GT16 model use the same clock models, see `vignette("simulate_SNV")`.
