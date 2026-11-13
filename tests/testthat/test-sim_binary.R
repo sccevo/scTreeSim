@@ -126,6 +126,29 @@ test_that("spikes add their distance to the daughter edges of divisions only", {
   }
 })
 
+test_that("tip divergence agrees with phangorn::simSeq on the distance tree", {
+  skip_if_not_installed("phangorn")
+  withr::local_seed(10)
+  l <- 4000
+  lambda <- 2
+  ct <- clock_tree(tree, clock_strict(0.3))
+
+  ours <- site_matrix(sim_binary(ct, n_sites = l, lambda = lambda, clock = NULL)$binary_1)[1:3, ]
+  # phangorn normalises Q to one expected substitution per unit branch length, as sim_binary does;
+  # it starts from the equilibrium at the root and ignores the root edge (no effect at equilibrium)
+  theirs <- as.character(phangorn::simSeq(distance_tree(ct)@phylo, l = l, Q = 1, bf = .binary_pi(lambda),
+                                          type = "USER", levels = c("0", "1")))
+  theirs <- theirs[ct@phylo$tip.label, ]
+
+  pairs <- list(ab = c(1, 2, 2), ac = c(1, 3, 3))  # tips, path distance in time
+  for (pr in pairs) {
+    p <- p_mismatch(lambda, 0.3 * pr[3])
+    tol <- tolerance_4se(p, l)
+    expect_within(mean(ours[pr[1], ] != ours[pr[2], ]), p, tol)
+    expect_within(mean(theirs[pr[1], ] != theirs[pr[2], ]), p, tol)
+  }
+})
+
 test_that("every node of a sampled tree inherits its parent's sequence when nothing evolves", {
   withr::local_seed(6)
   adb <- sim_adb_origin_samp(10, scale = 1, shape = 1, death_prob = 0.1, sampling_prob = 0.5)

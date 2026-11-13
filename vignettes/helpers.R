@@ -18,24 +18,39 @@ root_type <- function(tree) {
 }
 
 # Tree with a time axis (time before present, 0 = present) and marks for the origin and the present.
-#   color: "none", "type" (branches by type; root edge by the root type) or "status"
-#          (tips by alive / dead)
+#   color: "none", "type" (branches by type; root edge by the root type), "status"
+#          (tips by alive / dead) or "distance" (branches by the `distance` column of a
+#          clock_tree() result; `limits` fixes the colour scale, e.g. to share it between plots)
 #   pad: extra space on the right (fraction of the plot), e.g. for the barcodes of `plot_barcodes()`
-plot_tree <- function(tree, color = c("none", "type", "status"), pad = 0.05,
-                      tip_size = 1, show_nodes = FALSE) {
+plot_tree <- function(tree, color = c("none", "type", "status", "distance"), pad = 0.05,
+                      tip_size = 1, show_nodes = FALSE, limits = NULL) {
   color <- match.arg(color)
   origin <- tree@phylo$origin
   has_type <- "type" %in% names(tree@data)
 
   p <- if (color == "type" && has_type) {
     ggtree::ggtree(tree, ggplot2::aes(color = factor(type)))
+  } else if (color == "distance") {
+    ggtree::ggtree(tree, ggplot2::aes(color = distance), linewidth = 0.9)
   } else {
     ggtree::ggtree(tree, color = "black")
   }
   p <- ggtree::revts(p)  # present = 0
 
-  root_col <- if (color == "type" && has_type) type_cols[[as.character(root_type(tree))]] else "black"
-  if (!is.null(tree@phylo$root.edge)) p <- p + ggtree::geom_rootedge(color = root_col)
+  if (color == "distance") {
+    # the root edge as a segment, so that it takes its colour from the same scale
+    if (!is.null(tree@phylo$root.edge)) {
+      root <- p$data[p$data$node == p$data$parent, ]
+      p <- p + ggplot2::geom_segment(
+        data = data.frame(x = root$x - tree@phylo$root.edge, xend = root$x, y = root$y, distance = root$distance),
+        ggplot2::aes(x = x, xend = xend, y = y, yend = y, color = distance), linewidth = 0.9, inherit.aes = FALSE
+      )
+    }
+    p <- p + ggplot2::scale_color_viridis_c(name = "distance", limits = limits, end = 0.9)
+  } else {
+    root_col <- if (color == "type" && has_type) type_cols[[as.character(root_type(tree))]] else "black"
+    if (!is.null(tree@phylo$root.edge)) p <- p + ggtree::geom_rootedge(color = root_col)
+  }
 
   if (color == "type" && has_type) {
     p <- p + ggplot2::scale_color_manual(values = type_cols, name = "type")
@@ -59,7 +74,8 @@ plot_tree <- function(tree, color = c("none", "type", "status"), pad = 0.05,
     ggplot2::coord_cartesian(clip = "off") +
     ggtree::theme_tree2() +
     ggplot2::labs(x = "time before present") +
-    ggplot2::theme(legend.position = "bottom", plot.margin = ggplot2::margin(16, 8, 4, 4))
+    ggplot2::theme(legend.position = "bottom", plot.margin = ggplot2::margin(16, 8, 4, 4),
+                   plot.title = ggplot2::element_text(margin = ggplot2::margin(b = 14)))
 }
 
 # Barcode states of the tips as one matrix per barcode (tips x sites, rownames = tip labels).
@@ -116,5 +132,77 @@ plot_barcodes <- function(tree, bc, n_edits, color = "type", missing_state = "-"
                      colnames = FALSE, color = "white") +
       ggplot2::scale_fill_manual(values = cols, name = "state", na.translate = FALSE,
                                  breaks = shown, labels = labels[shown])
+  )
+}
+
+
+# ---- binary sequences ----
+
+# error colours differ from the type colours (palette[1:2])
+binary_cols <- c("0" = "white", "1" = "black", "false positive" = palette[[4]], "false negative" = palette[[3]])
+
+# Tree with branch lengths in expected substitutions per site (distance_tree() of a clock_tree() result),
+# coloured by type as in plot_tree(), with the origin at 0. No present mark: the tips are not aligned
+# in distance.
+plot_distance_tree <- function(tree, color = c("type", "none"), pad = 0.05) {
+  color <- match.arg(color)
+  dt <- distance_tree(tree)
+  by_type <- color == "type" && "type" %in% names(tree@data)
+  p <- if (by_type) ggtree::ggtree(dt, ggplot2::aes(color = factor(type))) else ggtree::ggtree(dt, color = "black")
+  # ggtree puts the root at 0; shift so that distances are measured from the origin
+  if (!is.null(dt@phylo$root.edge)) p$data$x <- p$data$x + dt@phylo$root.edge
+  root_col <- if (by_type) type_cols[[as.character(root_type(tree))]] else "black"
+  if (!is.null(dt@phylo$root.edge)) p <- p + ggtree::geom_rootedge(color = root_col)
+  if (by_type) p <- p + ggplot2::scale_color_manual(values = type_cols, name = "type")
+  p +
+    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0.02, pad))) +
+    ggtree::theme_tree2() +
+    ggplot2::labs(x = "expected substitutions per site from the origin") +
+    ggplot2::theme(legend.position = "bottom", plot.margin = ggplot2::margin(16, 8, 4, 4))
+}
+
+# Binary states of the tips as a tips x sites character matrix (rownames = tip labels), from the
+# output of sim_binary(): the data frame of strings (column `binary_1`) or one data frame of the
+# `write_as_string = FALSE` list (columns `site_1`, ...).
+binary_matrix <- function(tree, bin) {
+  tips <- seq_along(tree@phylo$tip.label)
+  bin <- bin[match(tips, bin$node), , drop = FALSE]
+  m <- if ("binary_1" %in% names(bin)) {
+    do.call(rbind, strsplit(bin$binary_1, "", fixed = TRUE))
+  } else {
+    as.matrix(bin[grep("^site_", names(bin))])
+  }
+  m[] <- as.character(m)
+  dimnames(m) <- list(tree@phylo$tip.label, paste0("site_", seq_len(ncol(m))))
+  m
+}
+
+# Tree with the binary sequences of the tips as a black (1) / white (0) heatmap, one row per tip.
+# `errors`: the true states (sim_binary() output without error), to mark the sites that the error
+# flipped. `distance = TRUE` draws the distance tree instead of the time tree.
+plot_binary <- function(tree, bin, errors = NULL, distance = FALSE, color = "type", site_width = 0.006) {
+  m <- binary_matrix(tree, bin)
+  if (!is.null(errors)) {
+    truth <- binary_matrix(tree, errors)
+    m[truth == "0" & m == "1"] <- "false positive"
+    m[truth == "1" & m == "0"] <- "false negative"
+  }
+  df <- as.data.frame(m)
+  df[] <- lapply(df, factor, levels = names(binary_cols))
+  p <- if (distance) plot_distance_tree(tree, color = color, pad = 0.02) else plot_tree(tree, color = color, pad = 0.02)
+  tree_width <- diff(range(p$data$x))
+  offset <- 0.04 * tree_width
+  width <- ncol(m) * site_width
+  # frame around the heatmap (gheatmap places column j at max(x) + offset + j * w, w = width * tree_width / ncol)
+  w <- width * tree_width / ncol(m)
+  frame <- c(xmin = max(p$data$x) + offset + w / 2, xmax = max(p$data$x) + offset + (ncol(m) + 0.5) * w,
+             ymin = 0.5, ymax = nrow(m) + 0.5)
+  shown <- names(binary_cols)[names(binary_cols) %in% m]
+  suppressMessages(
+    ggtree::gheatmap(p, df, offset = offset, width = width, colnames = FALSE, color = NA) +
+      ggplot2::annotate("rect", xmin = frame[["xmin"]], xmax = frame[["xmax"]], ymin = frame[["ymin"]],
+                        ymax = frame[["ymax"]], fill = NA, color = "grey40", linewidth = 0.3) +
+      ggplot2::scale_fill_manual(values = binary_cols, name = "state", na.translate = FALSE, breaks = shown,
+                                 guide = ggplot2::guide_legend(override.aes = list(color = "grey40")))
   )
 }

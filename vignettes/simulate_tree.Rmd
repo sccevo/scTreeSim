@@ -171,3 +171,5 @@ clk <- clock_strict(0.5, spike = spike(0.05, shape = 2, by_type = c(1, 3)))
 bc_binary <- sim_binary(mt_tree, n_sites = 10, clock = clk, alpha = 0.05, beta = 0.02)
 head(bc_binary)
 ```
+
+See `vignette("simulate_binary")` for the substitution model, the clock models and spikes.

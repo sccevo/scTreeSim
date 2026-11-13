@@ -59,3 +59,7 @@ Chen, K., Moravec, J. C., Gavryushkin, A., Welch, D., & Drummond, A. J. (2022).
 Accounting for errors in data improves divergence time estimates in single-cell cancer evolution.
 Molecular Biology and Evolution, 39(8), msac143.
 }
+\seealso{
+\code{\link[=clock_strict]{clock_strict()}}, \code{\link[=clock_relaxed]{clock_relaxed()}}, \code{\link[=spike]{spike()}} for clock models, \code{\link[=clock_tree]{clock_tree()}} to store
+and reuse a clock draw, and \code{vignette("simulate_binary")}
+}

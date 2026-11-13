@@ -30,6 +30,8 @@
 #'   characters "0"/"1".
 #'   If `write_as_string = FALSE`, a named list (`binary_1`, ...) with one data frame per sequence,
 #'   with one row per node and columns `node`, `site_1`, ..., `site_<n_sites>` (integer 0/1).
+#' @seealso [clock_strict()], [clock_relaxed()], [spike()] for clock models, [clock_tree()] to store
+#'   and reuse a clock draw, and `vignette("simulate_binary")`
 #' @export
 sim_binary <- function(tree, n_sites, n_sequences = 1, lambda = 1, origin_seq = NULL,
                        clock = clock_strict(), alpha = 0, beta = 0, write_as_string = TRUE) {

@@ -1,0 +1,296 @@
+---
+title: "Simulating Binary Sequences with Clock Models"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Simulating Binary Sequences with Clock Models}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 9,
+  fig.height = 5,
+  dpi = 300,
+  out.width = "100%",
+  eval = requireNamespace("ggtree", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE) &&
+    requireNamespace("patchwork", quietly = TRUE)
+)
+```
+
+```{r setup, message=FALSE}
+library(scTreeSim)
+library(ggtree)
+library(ggplot2)
+library(patchwork)
+source("helpers.R")  # plotting helpers of the vignettes: plot_tree(), plot_binary(), ...
+```
+
+`sim_binary()` evolves binary sequences (e.g. presence/absence of mutations, or binarised
+copy-number or methylation states) along a fixed tree. A simulation has three parts:
+
+| part | what it does | arguments / functions |
+|---|---|---|
+| substitution model | how a site changes along a distance | `lambda`, `origin_seq` |
+| clock model | how much distance each branch gets | `clock_strict()`, `clock_relaxed()`, `spike()` |
+| tip error | what is observed at the tips | `alpha` (false negatives), `beta` (false positives) |
+
+The clock turns branch lengths in time into **evolutionary distances**, in expected substitutions
+per site. `clock_tree()` draws the distances and stores them in the tree, so that several simulations
+can share one draw (`clock = NULL`), and `distance_tree()` returns the tree with the distances as branch lengths.
+The output is a table of strings, one row per node, or a node x site table per sequence
+(`write_as_string = FALSE`).
+
+All simulations below use one sequence of 100 sites (`n_sites = 100`) on the multi-type tree of
+`vignette("simulate_barcodes")`. The heatmaps show the sequences of the tips, one row per cell: a site
+is 0 (white) or 1 (black).
+
+```{r tree}
+origin_time <- 3.6
+ntype <- 2
+shape <- c(100, 1)
+scale <- 1 / shape
+r <- 0.11
+Xi_as <- matrix(c(0.0, 0.0, r, 0.0), nrow = ntype, ncol = ntype)
+Xi_s  <- matrix(c(1 - r, 0.0, 0.0, 1.0), nrow = ntype, ncol = ntype)
+
+set.seed(23)
+tree <- sim_adb_origin_samp(origin_time, scale, shape, death_prob = c(0.1, 0.1),
+                            sampling_prob = 0.8, origin_type = 0,
+                            asym_trans_prob = Xi_as, sym_trans_prob = Xi_s, collapse = FALSE)
+stopifnot(!is.null(tree))  # a simulation with too few tips returns NULL: try another seed
+
+plot_tree(tree, color = "type", show_nodes = TRUE)
+```
+
+`collapse = FALSE` keeps the divisions and type changes of the tree as nodes. Divisions are needed
+to place spikes (see below); the types to make them depend on the cell type.
+
+# The substitution model
+
+Each site evolves independently under a 2-state model: 0 -> 1 at rate 1 and 1 -> 0 at rate `lambda`,
+scaled so that a distance of `d` gives `d` expected substitutions per site. A site in state 0 is in
+state 1 after distance `d` with probability `pi1 * (1 - exp(-k * d))`, with equilibrium frequency
+`pi1 = 1 / (1 + lambda)` of state 1 and `k = (1 + lambda)^2 / (2 * lambda)`:
+
+```{r closed-form, fig.height = 3}
+grid <- expand.grid(d = seq(0, 3, length.out = 200), lambda = c(0.25, 1, 4))
+grid$p1 <- with(grid, 1 / (1 + lambda) * (1 - exp(-(1 + lambda)^2 / (2 * lambda) * d)))
+grid$lambda <- factor(grid$lambda)
+ggplot(grid, aes(d, p1, color = lambda)) +
+  geom_line() +
+  geom_hline(aes(yintercept = 1 / (1 + as.numeric(as.character(lambda))), color = lambda),
+             linetype = "dashed", linewidth = 0.3) +
+  scale_color_manual(values = unname(palette[1:3])) +
+  labs(x = "distance d (expected substitutions per site)", y = "P(state 1 | state 0 at d = 0)") +
+  theme_minimal()
+```
+
+Sites saturate at their equilibrium (dashed) after a distance of about 1, so the distances of the
+branches should mostly stay well below 1 to keep a phylogenetic signal.
+
+Starting from a sequence of zeros at the origin (`origin_seq`) and a strict clock with 0.15
+expected substitutions per site per unit of time:
+
+```{r strict}
+set.seed(1)
+bin <- sim_binary(tree, n_sites = 100, origin_seq = rep(0L, 100), clock = clock_strict(0.15))
+substr(head(bin, 3)$binary_1, 1, 40)  # the first 40 sites of the first three nodes
+```
+
+With `write_as_string = FALSE`, the same simulation is returned as a list with one node x site
+table (integer 0/1) per sequence:
+
+```{r strict-df}
+set.seed(1)
+bin_df <- sim_binary(tree, n_sites = 100, origin_seq = rep(0L, 100), clock = clock_strict(0.15),
+                     write_as_string = FALSE)
+bin_df$binary_1[1:3, 1:8]
+```
+
+```{r strict-plot}
+plot_binary(tree, bin)
+```
+
+1s accumulate from the all-zero origin, and closely related cells share them. Without
+`origin_seq`, the origin is drawn from the equilibrium, so `lambda` sets the frequency of 1s:
+
+```{r lambda, fig.height = 8}
+set.seed(5)
+low <- sim_binary(tree, n_sites = 100, lambda = 0.25, clock = clock_strict(0.15))
+high <- sim_binary(tree, n_sites = 100, lambda = 4, clock = clock_strict(0.15))
+(plot_binary(tree, low) + labs(title = "lambda = 0.25")) /
+  (plot_binary(tree, high) + labs(title = "lambda = 4")) +
+  plot_layout(guides = "collect")
+```
+
+# Clock models
+
+A clock model gives every branch, including the root edge, a distance:
+
+* `clock_strict(rate)`: `rate * length`, the same rate on all branches.
+* `clock_relaxed(rate, dist, ...)`: `multiplier * rate * length`, with a multiplier of mean 1 drawn independently
+  for every branch (`"lognormal"` with `sd`, `"gamma"` with `shape`, or `"exponential"`), as the
+  uncorrelated relaxed clocks of BEAST2.
+* `spike = spike(mean, shape, by_type)`, added to either clock: a burst of evolution at every cell division,
+  added to the distances of both daughter branches.
+
+## Strict and relaxed clocks
+
+On a single-type tree, colouring the branches (in time) by their distance shows the difference:
+
+```{r single-type, fig.height = 4.5}
+set.seed(3)
+tree1 <- sim_adb_origin_samp(4.5, scale = 0.25, shape = 4, death_prob = 0.1, sampling_prob = 0.6)
+
+set.seed(1)
+ct1_strict <- clock_tree(tree1, clock_strict(0.15))
+ct1_relaxed <- clock_tree(tree1, clock_relaxed(0.15, sd = 1))
+head(ct1_relaxed@data, 3)
+
+lim <- c(0, max(ct1_strict@data$distance, ct1_relaxed@data$distance))  # one colour scale for both
+(plot_tree(ct1_strict, color = "distance", limits = lim) + labs(title = "clock_strict(0.15)")) +
+  (plot_tree(ct1_relaxed, color = "distance", limits = lim) + labs(title = "clock_relaxed(0.15, sd = 1)")) +
+  plot_layout(guides = "collect") & theme(legend.position = "bottom")
+```
+
+`clock_tree()` adds a `distance` column (one value per node, for the branch ending in it; the root's value
+belongs to the root edge) and keeps the branch lengths in time. Under the strict clock the distance follows the
+length of a branch; under the relaxed clock, branches of the same length evolve by very different
+amounts.
+
+## Spikes at divisions
+
+`spike(mean)` adds `mean` expected substitutions per site to both daughter branches of every division
+(`status == 2`). With `shape = Inf` (default) every spike is the same, which gives about
+`Poisson(n_sites * mean)` substitutions per daughter branch; with a finite `shape` the spike is drawn
+from a gamma distribution with this mean, and the counts are over-dispersed. `by_type` multiplies
+`mean` by the type of the dividing cell.
+
+We draw three clocks on the multi-type tree and store them, to plot the distances and simulate on the same draw:
+
+```{r clocks}
+set.seed(2)
+ct_strict <- clock_tree(tree, clock_strict(0.15))
+ct_relaxed <- clock_tree(tree, clock_relaxed(0.15, sd = 1))
+ct_spike <- clock_tree(tree, clock_strict(0.05, spike = spike(0.05, shape = 2, by_type = c(1, 3))))
+```
+
+`plot_distance_tree()` draws the distance tree (`distance_tree()`):
+
+```{r distance-trees, fig.height = 8}
+(plot_tree(tree, color = "type") + labs(title = "time")) +
+  (plot_distance_tree(ct_strict) + labs(title = "strict")) +
+  (plot_distance_tree(ct_relaxed) + labs(title = "relaxed")) +
+  (plot_distance_tree(ct_spike) + labs(title = "strict + spikes")) +
+  plot_layout(ncol = 2, guides = "collect") & theme(legend.position = "bottom")
+```
+
+The strict distance tree is the time tree, rescaled. The relaxed clock stretches and shrinks single
+branches. With spikes, every branch that starts at a division is longer, most of all after divisions of
+type 1 cells (three times the spike).
+
+`clock = NULL` simulates on the stored distances, so the sequences belong to the distance trees above:
+
+```{r relaxed-plot}
+set.seed(3)
+bin_relaxed <- sim_binary(ct_relaxed, n_sites = 100, clock = NULL)
+plot_binary(ct_relaxed, bin_relaxed, distance = TRUE)
+```
+
+Next to the distance tree, the differences between sequences follow the distances, not the time:
+the cells at the top, separated by short distances, have almost the same sequence, whereas the two
+cells at the end of the long type 0 branch (bottom) differ more from all other cells than most pairs do.
+
+```{r spike-plot}
+set.seed(3)
+bin_spike <- sim_binary(ct_spike, n_sites = 100, clock = NULL)
+plot_binary(ct_spike, bin_spike)
+```
+
+With spikes, the type 1 cells, whose divisions add the most distance, are more diverse than the
+type 0 cells, although both have evolved for the same time.
+
+The spike shape sets how variable the substitutions per division are. Here, with spikes only
+(`rate = 0`) of mean 0.05 at all divisions, we count the sites that differ between a daughter cell
+and its parent (`write_as_string = FALSE`), over 30 simulations:
+
+```{r spike-counts, fig.height = 3}
+# branches that start at a division
+tree_df <- tibble::as_tibble(tree)
+div_edges <- tree_df[tree_df$parent != tree_df$node & tree_df$parent %in% tree_df$node[tree_df$status == 2], ]
+
+count_substitutions <- function(shape, n_rep = 30) {
+  clk <- clock_strict(0, spike = spike(0.05, shape = shape))
+  unlist(lapply(seq_len(n_rep), function(i) {
+    s <- as.matrix(sim_binary(tree, n_sites = 100, clock = clk, write_as_string = FALSE)$binary_1[-1])
+    rowSums(s[div_edges$node, ] != s[div_edges$parent, ])
+  }))
+}
+set.seed(6)
+counts <- rbind(data.frame(spike = "fixed (shape = Inf)", n = count_substitutions(Inf)),
+                data.frame(spike = "gamma (shape = 1)", n = count_substitutions(1)))
+aggregate(n ~ spike, counts, function(x) round(c(mean = mean(x), var = var(x)), 1))
+
+pois <- expand.grid(n = 0:25, spike = unique(counts$spike))
+pois$p <- dpois(pois$n, 5)
+ggplot(counts, aes(n)) +
+  geom_bar(aes(y = after_stat(prop)), fill = "grey60") +
+  geom_point(data = pois, aes(n, p), color = palette[[4]], size = 1) +
+  facet_wrap(~ spike) +
+  labs(x = "substitutions on a daughter branch", y = "proportion") +
+  theme_minimal()
+```
+
+Fixed spikes give about Poisson(5) counts (points); the mean is slightly below 5 because a few sites
+change back. Gamma spikes with `shape = 1` have the same mean but a variance of about
+`5 + 5^2 / shape`.
+
+Spikes are only placed at divisions that are nodes of the tree. A collapsed tree (`collapse = TRUE`) hides
+divisions on its branches; their number can be given in a `hidden_divisions` column of the tree data
+(see `?spike`).
+
+# Error at the tips
+
+`alpha` and `beta` are the probabilities of observing a 0 for a true 1 (false negative) and a 1 for a true 0
+(false positive). They act at the tips only, after evolution, so the internal nodes keep their true
+states and errors are not inherited. Error is drawn after the sequences, so with the same seed the true
+sequences are the same with and without error:
+
+```{r error}
+set.seed(4)
+true <- sim_binary(ct_strict, n_sites = 100, clock = NULL)
+set.seed(4)
+observed <- sim_binary(ct_strict, n_sites = 100, clock = NULL, alpha = 0.1, beta = 0.05)
+plot_binary(ct_strict, observed, errors = true, color = "none")
+```
+
+The marked sites were flipped by the error: about 10% of the 1s and 5% of the 0s. Unlike
+substitutions, errors are not shared by relatives.
+
+# Other substitution models
+
+`distance_tree()` makes the clock models usable with other simulators, e.g. `phangorn::simSeq()` for
+other substitution models. The same 2-state model in phangorn, which also scales its rate matrix to
+one expected substitution per unit of branch length:
+
+```{r phangorn, eval = requireNamespace("phangorn", quietly = TRUE)}
+lambda <- 1
+set.seed(7)
+seqs <- phangorn::simSeq(distance_tree(ct_relaxed)@phylo, l = 100, Q = 1,
+                         bf = c(lambda, 1) / (lambda + 1), type = "USER", levels = c("0", "1"))
+substr(unname(apply(as.character(seqs), 1, paste, collapse = ""))[1:3], 1, 40)
+```
+
+phangorn starts from the equilibrium at the root and ignores the root edge.
+
+# Choosing a clock
+
+* **Strict** (`clock_strict()`): all lineages evolve at the same rate, e.g. a constant mutation rate per time.
+* **Relaxed** (`clock_relaxed()`): rates vary between branches, e.g. lineages with different mutation rates;
+  `sd` (lognormal) or `shape` (gamma) set how much.
+* **Spikes** (`spike()`): mutations arise at cell divisions, e.g. replication errors or chromosomal changes
+  at mitosis; `shape` sets how variable they are, `by_type` makes them depend on the cell type.
+  Spikes add to a strict or relaxed clock, or replace it (`rate = 0`).
