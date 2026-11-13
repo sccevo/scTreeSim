@@ -78,6 +78,12 @@ test_that("clock = NULL simulates on the distance column of the tree", {
   expect_within(mean(site_matrix(out$binary_1)[1, ] == "1"), p, tolerance_4se(p, l))
 
   expect_error(sim_binary(tree, n_sites = 5, clock = NULL), "distance")
+
+  # a random clock is drawn once, so passing it equals drawing it with clock_tree first
+  clk <- clock_relaxed(sd = 0.8)
+  direct <- withr::with_seed(1, sim_binary(tree, n_sites = 20, n_sequences = 2, clock = clk))
+  stored <- withr::with_seed(1, sim_binary(clock_tree(tree, clk), n_sites = 20, n_sequences = 2, clock = NULL))
+  expect_equal(direct, stored)
 })
 
 test_that("every node of a sampled tree inherits its parent's sequence when nothing evolves", {

@@ -10,7 +10,7 @@ clock_strict(rate = 1)
 \item{rate}{substitutions per site per unit of time, non-negative}
 }
 \value{
-an object of class \code{clock_model}, for the \code{clock} argument of \code{\link[=sim_binary]{sim_binary()}}
+an object of class \code{clock_model}, see \code{\link[=clock_tree]{clock_tree()}}
 }
 \description{
 All branches evolve at the same \code{rate}, so the evolutionary distance of a branch is
@@ -18,6 +18,7 @@ All branches evolve at the same \code{rate}, so the evolutionary distance of a b
 }
 \seealso{
 Other clock models:
+\code{\link[=clock_relaxed]{clock_relaxed()}},
 \code{\link[=clock_tree]{clock_tree()}}
 }
 \concept{clock models}
