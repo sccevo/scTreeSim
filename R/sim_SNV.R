@@ -8,26 +8,25 @@
 .gt16_allele2 <- rep(seq_along(.gt16_nucleotides), times = 4)
 
 #' GT16 diploid nucleotide SNV simulator
-#' @details
-#' Simulates diploid single-nucleotide variants along a fixed tree under the
-#' GT16 model. The 16 states are the ordered pairs of nucleotides
-#' \code{AA, AC, AG, AT, CA, CC, ..., TT}
-#' Rather than forming \eqn{P(t) = \exp(Qt)} for every
-#' branch, the chain is simulated event by event.
+#' 
+#' Simulates diploid single-nucleotide variants along a fixed tree under the GT16 model. 
+#' The 16 states are the ordered pairs of nucleotides \code{AA, AC, AG, AT, CA, CC, ..., TT}.
+#' 
+#' Each site evolves independently with transition matrix \eqn{P(d) = \exp(Qd)}, where \eqn{d}
+#' is the evolutionary distance of a branch under the clock model and \eqn{Q} is scaled to one
+#' expected substitution per genotype site per unit of distance (a substitution on either allele
+#' counts). Rather than forming \eqn{P(d)} for every branch, the chain is simulated event by event
+#' over the distance \eqn{d}. For example, `spike(mean = m / n_sites)` adds on average `m`
+#' substitutions over all sites per division.
 #'
-#' The GT16 model is due to Kozlov et al. (2022), CellPhy, Genome Biology 23,
-#' 37. The error model and the code logic here are adapted from Chen, K.,
-#' Moravec, J. C., Gavryushkin, A., Welch, D., & Drummond, A. J. (2022),
-#' Accounting for errors in data improves divergence time estimates in
-#' single-cell cancer evolution, Molecular Biology and Evolution 39(8),
-#' msac143, and the BEAST2 phylonco package
-#' (https://github.com/bioDS/beast-phylonco-paper).
+#' The GT16 model and error model are due to 
+#' Kozlov, A., Alves, J.M., Stamatakis, A., Posada, D. (2022) CellPhy: accurate and fast probabilistic inference of single-cell phylogenies from scDNA-seq data. Genome Biology, 23(1):37. https://doi.org/10.1186/s13059-021-02583-w
+#' Chen, K., Moravec, J. C., Gavryushkin, A., Welch, D., & Drummond, A. J. (2022) Accounting for errors in data improves divergence time estimates in single-cell cancer evolution. Molecular Biology and Evolution, 39(8). https://doi.org/10.1093/molbev/msac143
 #'
 #' @param tree a treedata object
-#' @param sequences the root genotype, given as the two aligned allele
-#'   sequences of length `l`; they are paired site by site, so
-#'   `c("CGTAAC", "CGTATC")` is the six-site genotype CC, GG, TT, AA, AT, CC.
-#'   Supply this or `l`
+#' @param n_sites number of SNV sites. Used in place of `origin_seq` to draw the origin
+#'   genotypes from `pi` instead of fixing them; alongside `origin_seq` it is
+#'   optional, and must then give their length
 #' @param rates the six nucleotide exchangeabilities, in the order
 #'   \eqn{r_{AC}, r_{AG}, r_{AT}, r_{CG}, r_{CT}, r_{GT}}; a common scaling of
 #'   all six is removed by the rate normalization
@@ -35,40 +34,48 @@
 #'   state order above, or 4 nucleotide frequencies (A, C, G, T) from which the
 #'   genotype frequencies are formed as \eqn{\pi_{ab} = \pi_a \pi_b}; `NULL`
 #'   (default) for a uniform 1/16
-#' @param l number of SNV sites. Used in place of `sequences` to draw the root
-#'   genotypes from `pi` instead of fixing them; alongside `sequences` it is
-#'   optional, and must then give their length
-#' @param clock_rate substitution rate applied per unit branch length
+#' @param origin_seq the genotype at the origin (the top of the root edge, or the root if the tree
+#'   has none), given as the two aligned allele sequences of length `n_sites`; they are paired
+#'   site by site, so `c("CGTAAC", "CGTATC")` is the six-site genotype CC, GG, TT, AA, AT, CC.
+#'   Supply this or `n_sites`
+#' @param clock a clock model, e.g. [clock_strict()], drawn once and shared by all sites;
+#'   `NULL` = use the `distance` column of `tree` (see [clock_tree()])
 #' @param epsilon combined amplification and sequencing error probability
 #' @param delta allelic dropout probability
+#' @param format the form of the sequences in the output: `"genotype"` (default), one string of
+#'   genotypes separated by "_" per node (e.g. "AG_AC"), or `"alleles"`, the two aligned allele
+#'   sequences per node (e.g. "AA" and "GC" for the same genotypes), the form of `origin_seq`
 #'
-#' @return a data frame with one row per node in the tree and columns
-#'   \code{node}, \code{genotype} (the true simulated sequence) and
-#'   \code{observed} (the sequence after the error model), each entry a string
-#'   of `l` genotypes separated by "_" (e.g. "AA_CG_TT"). The error model
-#'   applies to the sampled tips (\code{status == 1}), so \code{observed}
-#'   equals \code{genotype} at every other node.
+#' @return a list of two data frames, `true` (the simulated genotypes) and `observed` (after the
+#'   error model), each with one row per node and columns `node` and `genotype`
+#'   (`format = "genotype"`) or `node`, `allele_1` and `allele_2` (`format = "alleles"`). The error
+#'   model applies to the sampled tips (`status == 1`), so `observed` equals `true` at every other
+#'   node.
+#' @seealso [clock_strict()], [clock_relaxed()], [spike()] for clock models, [clock_tree()] to store
+#'   and reuse a clock draw
 #' @export
-sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = NULL,
-                                l = NULL, clock_rate = 1,
-                                epsilon = 0, delta = 0) {
+sim_gt16_nt_diploid <- function(tree, n_sites = NULL, rates = rep(1, 6), pi = NULL, origin_seq = NULL,
+                                clock = clock_strict(), epsilon = 0, delta = 0,
+                                format = c("genotype", "alleles")) {
 
   stopifnot(methods::is(tree, "treedata"))
-  stopifnot(clock_rate > 0)
+  stopifnot(is.null(clock) || inherits(clock, "clock_model"))
+  format <- match.arg(format)
 
-  # the root genotypes are either read off the two aligned sequences or,
-  # failing that, drawn from the equilibrium distribution over `l` sites
-  if (is.null(sequences) && is.null(l)) {
-    stop("Supply `sequences` (the two aligned root sequences) or `l` (the number of sites).", call. = FALSE)
-  }
-  root_state <- if (is.null(sequences)) NULL else .gt16_pair_sequences(sequences)
-  if (!is.null(root_state) && !is.null(l) && as.integer(l) != length(root_state)) {
-    # `l` is redundant alongside `sequences`, but if given it has to agree
-    stop("`l` (", as.integer(l), ") must match the length of `sequences` (", length(root_state), ").",
+  # the origin genotypes are either read off the two aligned sequences or,
+  # failing that, drawn from the equilibrium distribution over `n_sites` sites
+  if (is.null(origin_seq) && is.null(n_sites)) {
+    stop("Supply `origin_seq` (the two aligned allele sequences at the origin) or `n_sites` (the number of sites).",
          call. = FALSE)
   }
-  l <- if (is.null(root_state)) as.integer(l) else length(root_state)
-  stopifnot(l >= 1L)
+  root_state <- if (is.null(origin_seq)) NULL else .gt16_pair_sequences(origin_seq)
+  if (!is.null(root_state) && !is.null(n_sites) && as.integer(n_sites) != length(root_state)) {
+    # `n_sites` is redundant alongside `origin_seq`, but if given it has to agree
+    stop("`n_sites` (", as.integer(n_sites), ") must match the length of `origin_seq` (", length(root_state), ").",
+         call. = FALSE)
+  }
+  n_sites <- if (is.null(root_state)) as.integer(n_sites) else length(root_state)
+  stopifnot(n_sites >= 1L)
 
   if (length(rates) != 6 || anyNA(rates) || any(rates < 0) || sum(rates) <= 0) {
     stop("`rates` must be six non-negative exchangeabilities (AC, AG, AT, CG, CT, GT), not all zero.",
@@ -81,6 +88,10 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
 
   events <- .gt16_events(rates, pi)
 
+  # one clock draw for all sites
+  if (!is.null(clock)) tree <- clock_tree(tree, clock)
+  d <- .node_distances(tree)
+
   tree_df <- tree %>% tibble::as_tibble() %>% as.data.frame()
   root <- tree_df$node[tree_df$parent == tree_df$node]
   stopifnot(length(root) == 1)
@@ -88,31 +99,24 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
   # edges in cladewise order, so a parent is always evolved before its
   # children; sorting nodes on height does not guarantee that, because a
   # zero-length edge leaves parent and child tied
-  phylo <- ape::reorder.phylo(tree@phylo, "cladewise")
+  edges <- ape::reorder.phylo(tree@phylo, "cladewise")$edge
 
-  state_at <- list()
-  state_at[[as.character(root)]] <- if (is.null(root_state)) {
-    sample.int(length(.gt16_states), l, replace = TRUE, prob = pi)
+  # the origin genotype evolves along the root edge (distance 0 without one)
+  origin_state <- if (is.null(root_state)) {
+    sample.int(length(.gt16_states), n_sites, replace = TRUE, prob = pi)
   } else {
     root_state
   }
+  state_at <- list()
+  state_at[[as.character(root)]] <- .evolve_branch_gt16(origin_state, d[root], events)
 
-  # evolve along the origin-to-root edge first, if the tree has one
-  root_edge <- tree@phylo$root.edge
-  if (!is.null(root_edge) && root_edge > 0) {
-    state_at[[as.character(root)]] <- .evolve_branch_gt16(
-      state_at[[as.character(root)]], clock_rate * root_edge, events
-    )
-  }
-
-  # then walk every remaining branch, parent genotype -> child genotype
-  # (the root never appears as a child, so it is covered by the block above)
-  for (i in seq_len(nrow(phylo$edge))) {
-    parent <- phylo$edge[i, 1]
-    node <- phylo$edge[i, 2]
-
+  # then every remaining branch, parent genotype -> child genotype, over the
+  # child's distance
+  for (i in seq_len(nrow(edges))) {
+    parent <- edges[i, 1]
+    node <- edges[i, 2]
     state_at[[as.character(node)]] <- .evolve_branch_gt16(
-      state_at[[as.character(parent)]], clock_rate * phylo$edge.length[i], events
+      state_at[[as.character(parent)]], d[node], events
     )
   }
 
@@ -131,13 +135,23 @@ sim_gt16_nt_diploid <- function(tree, sequences = NULL, rates = rep(1, 6), pi = 
     }
   }
 
-  collapse_seq <- function(states) paste(.gt16_states[states], collapse = "_")
-  data.frame(
-    node = tree_df$node,
-    genotype = vapply(tree_df$node, function(nd) collapse_seq(state_at[[as.character(nd)]]), character(1)),
-    observed = vapply(tree_df$node, function(nd) collapse_seq(observed_at[[as.character(nd)]]), character(1)),
-    stringsAsFactors = FALSE
-  )
+  keys <- as.character(tree_df$node)
+  list(true = .gt16_format(state_at[keys], tree_df$node, format),
+       observed = .gt16_format(observed_at[keys], tree_df$node, format))
+}
+
+# One row per node, either as genotypes separated by "_" ("AG_AC") or as the two aligned allele
+# sequences ("AA" and "GC"), the form of `origin_seq`
+.gt16_format <- function(states, nodes, format) {
+  if (format == "genotype") {
+    return(data.frame(node = nodes,
+                      genotype = vapply(states, function(s) paste(.gt16_states[s], collapse = "_"), character(1)),
+                      row.names = NULL))
+  }
+  allele <- function(which) {
+    vapply(states, function(s) paste(.gt16_nucleotides[which[s]], collapse = ""), character(1))
+  }
+  data.frame(node = nodes, allele_1 = allele(.gt16_allele1), allele_2 = allele(.gt16_allele2), row.names = NULL)
 }
 
 # accept either 16 genotype frequencies or 4 nucleotide frequencies, in which

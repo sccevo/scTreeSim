@@ -83,14 +83,14 @@ test_that("a tree with zero-length edges is simulated parent before child", {
   zero_df <- as.data.frame(tibble::as_tibble(zero_tree))
 
   for (seed in 1:3) {
-    out <- withr::with_seed(seed, sim_gt16_nt_diploid(zero_tree, sequences = c("CGTAAC", "CGTATC")))
-    expect_true(all(nzchar(out$genotype)))
-    expect_true(all(unlist(split_sites(out$genotype)) %in% scTreeSim:::.gt16_states))
+    out <- withr::with_seed(seed, sim_gt16_nt_diploid(zero_tree, origin_seq = c("CGTAAC", "CGTATC")))
+    expect_true(all(nzchar(out$true$genotype)))
+    expect_true(all(unlist(split_sites(out$true$genotype)) %in% scTreeSim:::.gt16_states))
 
     zero <- !is.na(zero_df$branch.length) & zero_df$branch.length == 0 &
       zero_df$parent != zero_df$node
-    expect_identical(out$genotype[match(zero_df$node[zero], out$node)],
-                     out$genotype[match(zero_df$parent[zero], out$node)])
+    expect_identical(out$true$genotype[match(zero_df$node[zero], out$true$node)],
+                     out$true$genotype[match(zero_df$parent[zero], out$true$node)])
   }
 })
 
@@ -148,54 +148,152 @@ test_that("the two aligned sequences are paired site by site", {
   expect_error(scTreeSim:::.gt16_pair_sequences(c("", "")), "non-empty")
 })
 
-test_that("a root given as two sequences starts the simulation from that genotype", {
-  out <- sim_gt16_nt_diploid(tree, sequences = c("CGTAAC", "CGTATC"), rates = rates, pi = pi,
-                             clock_rate = 1e-12)
-  expect_true(all(out$genotype == "CC_GG_TT_AA_AT_CC"))
+test_that("an origin given as two allele sequences starts the simulation from that genotype", {
+  out <- sim_gt16_nt_diploid(tree, origin_seq = c("CGTAAC", "CGTATC"), rates = rates, pi = pi,
+                             clock = clock_strict(0))
+  expect_true(all(out$true$genotype == "CC_GG_TT_AA_AT_CC"))
 
   # stating the length alongside the sequences is allowed, and changes nothing
-  expect_equal(sim_gt16_nt_diploid(tree, sequences = c("CGTAAC", "CGTATC"), rates = rates, pi = pi,
-                                   l = 6, clock_rate = 1e-12), out)
+  expect_equal(sim_gt16_nt_diploid(tree, origin_seq = c("CGTAAC", "CGTATC"), rates = rates, pi = pi,
+                                   n_sites = 6, clock = clock_strict(0)), out)
 })
 
-test_that("sim_gt16_nt_diploid returns one genotype sequence of l sites per node", {
+test_that("sim_gt16_nt_diploid returns true and observed genotypes of n_sites sites per node", {
   withr::local_seed(5)
-  out <- sim_gt16_nt_diploid(tree, l = 8, rates = rates, pi = pi)
+  out <- sim_gt16_nt_diploid(tree, n_sites = 8, rates = rates, pi = pi)
 
-  expect_named(out, c("node", "genotype", "observed"))
-  expect_equal(out$node, tree_df$node)
-  sites <- split_sites(out$genotype)
+  expect_named(out, c("true", "observed"))
+  expect_named(out$true, c("node", "genotype"))
+  expect_named(out$observed, c("node", "genotype"))
+  expect_equal(out$true$node, tree_df$node)
+  sites <- split_sites(out$true$genotype)
   expect_true(all(lengths(sites) == 8))
   expect_true(all(unlist(sites) %in% scTreeSim:::.gt16_states))
   # without an error model the observations are the true genotypes
-  expect_equal(out$observed, out$genotype)
+  expect_equal(out$observed, out$true)
+})
+
+test_that("the alleles format holds the same genotypes as two aligned allele sequences", {
+  as_genotype <- function(alleles) {
+    vapply(seq_len(nrow(alleles)), function(i) {
+      paste(scTreeSim:::.gt16_states[scTreeSim:::.gt16_pair_sequences(c(alleles$allele_1[i], alleles$allele_2[i]))],
+            collapse = "_")
+    }, character(1))
+  }
+  args <- list(tree, n_sites = 8, rates = rates, pi = pi, epsilon = 0.2, delta = 0.2)
+  genotype <- withr::with_seed(5, do.call(sim_gt16_nt_diploid, args))
+  alleles <- withr::with_seed(5, do.call(sim_gt16_nt_diploid, c(args, format = "alleles")))
+
+  expect_named(alleles$true, c("node", "allele_1", "allele_2"))
+  expect_true(all(nchar(alleles$true$allele_1) == 8 & nchar(alleles$true$allele_2) == 8))
+  for (part in c("true", "observed")) {
+    expect_equal(alleles[[part]]$node, genotype[[part]]$node)
+    expect_equal(as_genotype(alleles[[part]]), genotype[[part]]$genotype)
+  }
+
+  # a node's alleles are a valid origin: under a frozen clock every node keeps them
+  tip <- alleles$true[1, ]
+  frozen <- sim_gt16_nt_diploid(tree, origin_seq = c(tip$allele_1, tip$allele_2), clock = clock_strict(0),
+                                format = "alleles")
+  expect_true(all(frozen$true$allele_1 == tip$allele_1 & frozen$true$allele_2 == tip$allele_2))
+
+  expect_error(sim_gt16_nt_diploid(tree, n_sites = 3, format = "foo"), "should be one of")
 })
 
 test_that("genotypes are inherited from the parent and a slow clock keeps them", {
   withr::local_seed(6)
-  out <- sim_gt16_nt_diploid(tree, sequences = c(strrep("A", 200), strrep("G", 200)),
-                             rates = rates, pi = pi, clock_rate = 1e-5)
-  sites <- split_sites(out$genotype)
+  out <- sim_gt16_nt_diploid(tree, origin_seq = c(strrep("A", 200), strrep("G", 200)),
+                             rates = rates, pi = pi, clock = clock_strict(1e-5))
+  sites <- split_sites(out$true$genotype)
 
   expect_true(all(vapply(sites, function(s) mean(s == "AG"), numeric(1)) > 0.95))
 
-  # with no root edge and a zero clock every node keeps the root sequence
-  frozen <- sim_gt16_nt_diploid(tree, sequences = c("ACTGA", "AGTAC"), rates = rates, pi = pi,
-                                clock_rate = 1e-12)
-  expect_true(all(frozen$genotype == "AA_CG_TT_GA_AC"))
+  # a zero clock rate keeps the root sequence at every node
+  frozen <- sim_gt16_nt_diploid(tree, origin_seq = c("ACTGA", "AGTAC"), rates = rates, pi = pi,
+                                clock = clock_strict(0))
+  expect_true(all(frozen$true$genotype == "AA_CG_TT_GA_AC"))
+})
+
+# --- clock models -------------------------------------------------------------
+
+# chi-squared p-value of the genotypes at one node against row `from` of exp(Q d)
+genotype_fit <- function(genotypes, from, d) {
+  states <- scTreeSim:::.gt16_states
+  observed <- table(factor(genotypes, levels = states))
+  Q <- scTreeSim:::.gt16_rate_matrix(rates, pi)
+  expected <- transition_probs(Q, d, pi)[match(from, states), ]
+  keep <- expected * length(genotypes) > 10
+  stats::chisq.test(observed[keep], p = expected[keep] / sum(expected[keep]))$p.value
+}
+small_tree <- small_barcode_tree()
+ag_root <- c(strrep("A", 4000), strrep("G", 4000))
+
+test_that("a fixed root genotype diverges as exp(Qd), with d = rate * distance from origin", {
+  withr::local_seed(9)
+  out <- sim_gt16_nt_diploid(small_tree, origin_seq = ag_root, rates = rates, pi = pi,
+                             clock = clock_strict(0.4))
+  sites <- split_sites(out$true$genotype)
+
+  # the origin-to-root edge is evolved too
+  dist_from_origin <- c(2, 2, 2, 0.5, 1)
+  for (nd in 1:5) {
+    expect_gt(genotype_fit(sites[[nd]], "AG", 0.4 * dist_from_origin[nd]), 0.001)
+  }
+})
+
+test_that("clock_strict(r) equals clock_strict(1) on branch lengths scaled by r", {
+  r <- 0.3
+  scaled <- small_tree
+  scaled@phylo$edge.length <- r * scaled@phylo$edge.length
+  scaled@phylo$root.edge <- r * scaled@phylo$root.edge
+
+  args <- list(origin_seq = c("ACGTACGT", "CCGGTTAA"), rates = rates, pi = pi)
+  expect_equal(withr::with_seed(10, do.call(sim_gt16_nt_diploid, c(list(small_tree, clock = clock_strict(r)), args))),
+               withr::with_seed(10, do.call(sim_gt16_nt_diploid, c(list(scaled, clock = clock_strict(1)), args))))
+})
+
+test_that("clock = NULL simulates on the distance column of the tree", {
+  withr::local_seed(11)
+  ct <- clock_tree(small_tree, clock_strict(0.4))
+  out <- sim_gt16_nt_diploid(ct, origin_seq = ag_root, rates = rates, pi = pi, clock = NULL)
+  expect_gt(genotype_fit(split_sites(out$true$genotype)[[1]], "AG", 0.4 * 2), 0.001)
+
+  expect_error(sim_gt16_nt_diploid(small_tree, n_sites = 5, clock = NULL), "distance")
+  expect_error(sim_gt16_nt_diploid(small_tree, n_sites = 5, clock = 1), "clock_model")
+
+  # a random clock is drawn once, so passing it equals drawing it with clock_tree first
+  clk <- clock_relaxed(sd = 0.8)
+  direct <- withr::with_seed(1, sim_gt16_nt_diploid(tree, n_sites = 20, clock = clk))
+  stored <- withr::with_seed(1, sim_gt16_nt_diploid(clock_tree(tree, clk), n_sites = 20, clock = NULL))
+  expect_equal(direct, stored)
+})
+
+test_that("spikes add their distance to the daughter edges of divisions only", {
+  withr::local_seed(12)
+  s <- 0.15
+  out <- sim_gt16_nt_diploid(small_tree, origin_seq = ag_root, rates = rates, pi = pi,
+                             clock = clock_strict(0, spike = spike(s)))
+  sites <- split_sites(out$true$genotype)
+
+  # no gradual evolution: the root edge has no spike, every later edge one
+  expect_true(all(sites[[4]] == "AG"))
+  spikes_from_origin <- c(2, 2, 1, 0, 1)
+  for (nd in c(1, 2, 3, 5)) {
+    expect_gt(genotype_fit(sites[[nd]], "AG", s * spikes_from_origin[nd]), 0.001)
+  }
 })
 
 test_that("input is validated", {
-  expect_error(sim_gt16_nt_diploid(tree, l = 3, rates = rep(1, 5)), "`rates` must be six")
-  expect_error(sim_gt16_nt_diploid(tree, l = 3, rates = rep(0, 6)), "`rates` must be six")
-  expect_error(sim_gt16_nt_diploid(tree, l = 3, pi = rep(0.5, 16)), "summing to 1")
-  expect_error(sim_gt16_nt_diploid(tree, l = 3, pi = rep(0.2, 5)), "must have length 16")
-  expect_error(sim_gt16_nt_diploid(tree, l = 3, epsilon = 1.2), "must be probabilities")
-  expect_error(sim_gt16_nt_diploid(tree), "Supply `sequences`")
-  expect_error(sim_gt16_nt_diploid(tree, sequences = c("ACG", "AC")), "must be aligned")
-  expect_error(sim_gt16_nt_diploid(tree, sequences = c("AC", "GT"), l = 3), "must match the length")
+  expect_error(sim_gt16_nt_diploid(tree, n_sites = 3, rates = rep(1, 5)), "`rates` must be six")
+  expect_error(sim_gt16_nt_diploid(tree, n_sites = 3, rates = rep(0, 6)), "`rates` must be six")
+  expect_error(sim_gt16_nt_diploid(tree, n_sites = 3, pi = rep(0.5, 16)), "summing to 1")
+  expect_error(sim_gt16_nt_diploid(tree, n_sites = 3, pi = rep(0.2, 5)), "must have length 16")
+  expect_error(sim_gt16_nt_diploid(tree, n_sites = 3, epsilon = 1.2), "must be probabilities")
+  expect_error(sim_gt16_nt_diploid(tree), "Supply `origin_seq`")
+  expect_error(sim_gt16_nt_diploid(tree, origin_seq = c("ACG", "AC")), "must be aligned")
+  expect_error(sim_gt16_nt_diploid(tree, origin_seq = c("AC", "GT"), n_sites = 3), "`n_sites` \\(3\\) must match")
   # all equilibrium mass on one state leaves no substitutions to normalize by
-  expect_error(sim_gt16_nt_diploid(tree, l = 3, pi = c(1, rep(0, 15))), "degenerate GT16 rate matrix")
+  expect_error(sim_gt16_nt_diploid(tree, n_sites = 3, pi = c(1, rep(0, 15))), "degenerate GT16 rate matrix")
 })
 
 test_that("nucleotide frequencies expand to the product genotype frequencies", {
@@ -237,29 +335,29 @@ test_that("the GT16 error matrix follows equation (2) and is a proper distributi
 })
 
 test_that("the error model changes observations but not the true genotypes", {
-  args <- list(tree, sequences = c(strrep("A", 100), strrep("A", 100)), rates = rates, pi = pi)
+  args <- list(tree, origin_seq = c(strrep("A", 100), strrep("A", 100)), rates = rates, pi = pi)
   with_error <- withr::with_seed(7, do.call(sim_gt16_nt_diploid, c(args, epsilon = 0.3, delta = 0.2)))
   no_error <- withr::with_seed(7, do.call(sim_gt16_nt_diploid, c(args, epsilon = 0, delta = 0)))
 
   # the evolutionary simulation is untouched by the error parameters
-  expect_equal(with_error$genotype, no_error$genotype)
+  expect_equal(with_error$true, no_error$true)
 
-  is_tip <- with_error$node %in% tree_df$node[tree_df$status == 1]
-  expect_true(any(with_error$observed[is_tip] != with_error$genotype[is_tip]))
+  is_tip <- with_error$true$node %in% tree_df$node[tree_df$status == 1]
+  expect_true(any(with_error$observed$genotype[is_tip] != with_error$true$genotype[is_tip]))
   # errors are a measurement effect at the sequenced cells only
-  expect_equal(with_error$observed[!is_tip], with_error$genotype[!is_tip])
+  expect_equal(with_error$observed$genotype[!is_tip], with_error$true$genotype[!is_tip])
 })
 
 test_that("observed genotypes at the tips follow the error distribution", {
   epsilon <- 0.3
   delta <- 0.2
-  out <- withr::with_seed(8, sim_gt16_nt_diploid(tree, sequences = c(strrep("A", 3000), strrep("C", 3000)),
-                                                 rates = rates, pi = pi, clock_rate = 1e-12,
+  out <- withr::with_seed(8, sim_gt16_nt_diploid(tree, origin_seq = c(strrep("A", 3000), strrep("C", 3000)),
+                                                 rates = rates, pi = pi, clock = clock_strict(0),
                                                  epsilon = epsilon, delta = delta))
-  tip <- out[out$node %in% tree_df$node[tree_df$status == 1], ][1, ]
-  expect_equal(unique(split_sites(tip$genotype)[[1]]), "AC")
+  tip <- match(tree_df$node[tree_df$status == 1][1], out$true$node)
+  expect_equal(unique(split_sites(out$true$genotype[tip])[[1]]), "AC")
 
-  observed <- table(factor(split_sites(tip$observed)[[1]], levels = scTreeSim:::.gt16_states))
+  observed <- table(factor(split_sites(out$observed$genotype[tip])[[1]], levels = scTreeSim:::.gt16_states))
   expected <- scTreeSim:::.gt16_error_matrix(epsilon, delta)["AC", ]
   keep <- expected * 3000 > 10
   expect_gt(stats::chisq.test(observed[keep], p = expected[keep] / sum(expected[keep]))$p.value, 0.001)

@@ -1,0 +1,221 @@
+---
+title: "Simulating Diploid SNVs with Clock Models"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Simulating Diploid SNVs with Clock Models}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 9,
+  fig.height = 5,
+  dpi = 300,
+  out.width = "100%",
+  eval = requireNamespace("ggtree", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE) &&
+    requireNamespace("patchwork", quietly = TRUE)
+)
+```
+
+```{r setup, message=FALSE}
+library(scTreeSim)
+library(ggtree)
+library(ggplot2)
+library(patchwork)
+source("helpers.R")  # plotting helpers of the vignettes: plot_tree(), plot_alleles(), ...
+```
+
+`sim_gt16_nt_diploid()` evolves diploid single-nucleotide variants (SNVs) along a fixed tree under the
+GT16 model of CellPhy (Kozlov et al., 2022), with the sequencing error model of phylonco (Chen et al., 2022).
+Every site carries a **genotype** of two nucleotides, one per allele. Genotypes are phased: the 16 states are
+the ordered pairs `AA, AC, ..., TT`, so `AC` and `CA` are different states. A simulation has three parts:
+
+| part | what it does | arguments / functions |
+|---|---|---|
+| substitution model | how a genotype changes along a distance | `rates`, `pi`, `origin_seq` or `n_sites` |
+| clock model | how much distance each branch gets | `clock_strict()`, `clock_relaxed()`, `spike()` |
+| tip error | what is observed at the tips | `epsilon` (amplification and sequencing error), `delta` (allelic dropout) |
+
+The clock models are the same as for `sim_binary()` (see `vignette("simulate_binary")`). The output is
+a list of two tables with one row per node, the true genotypes (`true`) and the genotypes after the error
+model (`observed`), either as strings of genotypes separated by `_` (`format = "genotype"`, default) or as
+two aligned allele sequences (`format = "alleles"`).
+
+All simulations below use 40 sites on the multi-type tree of `vignette("simulate_barcodes")`. The heatmaps
+show the genotypes of the tips with **two rows per cell**: allele 1 above, allele 2 below, one colour per
+nucleotide. A site is heterozygous where the two rows of a cell differ.
+
+```{r tree}
+origin_time <- 3.6
+ntype <- 2
+shape <- c(100, 1)
+scale <- 1 / shape
+r <- 0.11
+Xi_as <- matrix(c(0.0, 0.0, r, 0.0), nrow = ntype, ncol = ntype)
+Xi_s  <- matrix(c(1 - r, 0.0, 0.0, 1.0), nrow = ntype, ncol = ntype)
+
+set.seed(23)
+tree <- sim_adb_origin_samp(origin_time, scale, shape, death_prob = c(0.1, 0.1),
+                            sampling_prob = 0.8, origin_type = 0,
+                            asym_trans_prob = Xi_as, sym_trans_prob = Xi_s, collapse = FALSE)
+stopifnot(!is.null(tree))  # a simulation with too few tips returns NULL: try another seed
+
+plot_tree(tree, color = "type", show_nodes = TRUE)
+```
+
+# The GT16 model
+
+A substitution changes **one allele at a time**: `AG` can become `CG`, `GG`, `TG` (first allele) or `AA`,
+`AC`, `AT` (second allele), but not `CT` in a single step. The rate from genotype `xy` to `x'y` is the
+exchangeability of the two nucleotides that change (`rates`, in the order AC, AG, AT, CG, CT, GT) times the
+equilibrium frequency of the new genotype (`pi`). `pi` is given either for the 16 genotypes or for the four
+nucleotides, in which case the genotype frequencies are the products, e.g. `pi_AG = pi_A * pi_G`.
+
+The rate matrix is scaled to one expected substitution per genotype site per unit of distance, where a
+change of either allele counts. A distance `d` therefore gives about `d / 2` substitutions per allele.
+
+# Two alleles from a homozygous origin
+
+To follow the two alleles, we start every site homozygous: the origin genotype is given as two aligned
+allele sequences (`origin_seq`), here twice the same random sequence. With a strict clock of 0.15 expected
+substitutions per genotype site per unit of time:
+
+```{r strict}
+set.seed(1)
+origin <- paste(sample(c("A", "C", "G", "T"), 40, replace = TRUE), collapse = "")
+snv <- sim_gt16_nt_diploid(tree, origin_seq = c(origin, origin), clock = clock_strict(0.15))
+names(snv)
+substr(head(snv$true, 3)$genotype, 1, 32)  # the first 11 sites of the first three nodes
+```
+
+With `format = "alleles"`, the same simulation is returned as the two allele sequences of every node, the
+same form as `origin_seq`, so that a node can be the origin of another simulation:
+
+```{r alleles}
+set.seed(1)
+snv_alleles <- sim_gt16_nt_diploid(tree, origin_seq = c(origin, origin), clock = clock_strict(0.15),
+                                   format = "alleles")
+substr(head(snv_alleles$true, 3)$allele_1, 1, 11)
+substr(head(snv_alleles$true, 3)$allele_2, 1, 11)
+```
+
+```{r strict-plot}
+plot_alleles(tree, snv)
+```
+
+The two alleles of a cell evolve independently, so most substitutions make a homozygous site
+heterozygous (the two rows of a cell differ), and these are shared by related cells. A site turns into
+another homozygous genotype only if both alleles change.
+
+`rates` and `pi` set which substitutions are likely. Without `origin_seq`, the origin is drawn from the
+equilibrium `pi` (`n_sites` = number of sites). Here transitions (A <-> G, C <-> T) are four times as fast as
+transversions, and A and T are more frequent than C and G:
+
+```{r rates-pi}
+set.seed(2)
+snv_at <- sim_gt16_nt_diploid(tree, n_sites = 40, rates = c(1, 4, 1, 1, 4, 1), pi = c(0.3, 0.2, 0.2, 0.3),
+                              clock = clock_strict(0.15))
+tips <- snv_at$true$node %in% seq_along(tree@phylo$tip.label)
+round(prop.table(table(unlist(strsplit(gsub("_", "", snv_at$true$genotype[tips]), "")))), 2)
+plot_alleles(tree, snv_at)
+```
+
+# Clock models
+
+As for binary sequences, a clock model gives every branch, including the root edge, a distance
+(`clock_strict()`, `clock_relaxed()`), optionally with spikes at cell divisions (`spike()`). One clock
+draw is shared by all sites. `clock_tree()` stores the draw in the tree, and `clock = NULL` simulates on it,
+so that the genotypes can be plotted next to the distance tree.
+
+The mean of a spike is in expected substitutions per genotype site, so `spike(mean = m / n_sites)` gives
+about `m` substitutions over all sites at a division. Here, a relaxed clock and a strict clock with spikes
+of 2 substitutions over the 40 sites (three times as much after divisions of type 1 cells):
+
+```{r clocks, fig.height = 9}
+set.seed(3)
+ct_relaxed <- clock_tree(tree, clock_relaxed(0.15, sd = 1))
+ct_spike <- clock_tree(tree, clock_strict(0.05, spike = spike(2 / 40, shape = 2, by_type = c(1, 3))))
+snv_relaxed <- sim_gt16_nt_diploid(ct_relaxed, origin_seq = c(origin, origin), clock = NULL)
+snv_spike <- sim_gt16_nt_diploid(ct_spike, origin_seq = c(origin, origin), clock = NULL)
+
+(plot_alleles(ct_relaxed, snv_relaxed, distance = TRUE) + labs(title = "relaxed")) /
+  (plot_alleles(ct_spike, snv_spike, distance = TRUE) + labs(title = "strict + spikes")) +
+  plot_layout(guides = "collect") & theme(legend.position = "bottom")
+```
+
+Cells separated by short distances have almost the same genotypes; with spikes, the type 1 cells, whose
+divisions add the most distance, differ more from each other than the type 0 cells.
+
+# Error at the tips
+
+The error model of Chen et al. (2022) has two parameters, which act on the sampled tips
+(`status == 1`) only, after evolution:
+
+* `epsilon`, **amplification and sequencing error**: the read of an allele shows another nucleotide.
+  Each of the six genotypes that differ in one allele is observed with probability `epsilon / 6`
+  (times `1 - delta`).
+* `delta`, **allelic dropout**: one allele is not amplified, and the other is read twice, so a
+  heterozygous site `ab` is observed as `aa` or `bb` (probability `delta / 2` each). Dropout does not
+  change homozygous sites, unless it comes with an amplification error of the remaining allele
+  (`aa` observed as `bb`, probability `delta * epsilon / 6`).
+
+The marks show the alleles that the error changed, by kind of change: one allele read as another
+nucleotide, a heterozygous site read as homozygous for one of its alleles (as after dropout), or both
+alleles changed. `plot_alleles(errors = TRUE)` compares the `observed` genotypes of a simulation with its
+`true` genotypes:
+
+```{r error, fig.height = 13}
+error_settings <- list("epsilon = 0.1" = list(epsilon = 0.1, delta = 0),
+                       "delta = 0.3" = list(epsilon = 0, delta = 0.3),
+                       "epsilon = 0.1, delta = 0.3" = list(epsilon = 0.1, delta = 0.3))
+set.seed(4)
+plots <- lapply(names(error_settings), function(name) {
+  snv_error <- do.call(sim_gt16_nt_diploid, c(list(tree, origin_seq = c(origin, origin),
+                                                   clock = clock_strict(0.15)), error_settings[[name]]))
+  plot_alleles(tree, snv_error, errors = TRUE, color = "none") + labs(title = name)
+})
+wrap_plots(plots, ncol = 1) + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+```
+
+Dropout only marks heterozygous sites, and always as het -> hom; amplification and sequencing errors hit
+every site, mostly one allele at a time. As for binary sequences, errors are not shared by relatives.
+
+How often each kind occurs depends on the true genotype. On a frozen clock (`clock_strict(0)`), every tip has
+the origin genotype; here half of the 2000 sites are homozygous (`AA`) and half heterozygous (`AC`):
+
+```{r error-kinds}
+n <- 2000
+mixed <- c(strrep("A", n), paste0(strrep("A", n / 2), strrep("C", n / 2)))
+tip_kinds <- function(epsilon, delta) {
+  out <- sim_gt16_nt_diploid(tree, origin_seq = mixed, clock = clock_strict(0), epsilon = epsilon, delta = delta)
+  kinds <- error_kinds(allele_matrices(tree, out, "true"), allele_matrices(tree, out, "observed"))
+  site_kind <- ifelse(is.na(kinds$allele1), kinds$allele2, kinds$allele1)  # one kind per site
+  site_kind[is.na(site_kind)] <- "none"
+  true_genotype <- rep(rep(c("AA", "AC"), each = n / 2), each = nrow(site_kind))
+  prop.table(table(true_genotype, factor(site_kind, c("none", names(error_shapes)))), 1)
+}
+set.seed(5)
+lapply(error_settings, function(s) round(tip_kinds(s$epsilon, s$delta), 3))
+```
+
+With `epsilon = 0.1`, a homozygous site is observed with one allele changed with probability `epsilon`;
+a heterozygous site is also read as homozygous (`epsilon / 3`). With `delta = 0.3`, only heterozygous sites
+are affected, with probability `delta`. Both together also turn a few homozygous sites into another
+homozygous genotype.
+
+# Choosing parameters
+
+* **`rates`, `pi`**: the nucleotide substitution pattern, e.g. faster transitions, or a skewed base
+  composition. Without `origin_seq`, the origin is drawn from `pi`.
+* **Clock**: strict, relaxed or with spikes, as in `vignette("simulate_binary")`. For SNVs, distances are per
+  genotype site (both alleles); `spike(mean = m / n_sites)` gives about `m` substitutions per division.
+* **`epsilon`, `delta`**: the error of single-cell sequencing at the tips. Dropout only shows at heterozygous
+  sites, so it matters most for trees with long distances or from a heterozygous origin.
+
+# References
+Kozlov, A., Alves, J.M., Stamatakis, A., Posada, D. (2022) CellPhy: accurate and fast probabilistic inference of single-cell phylogenies from scDNA-seq data. Genome Biology, 23(1):37. https://doi.org/10.1186/s13059-021-02583-w
+
+Chen, K., Moravec, J. C., Gavryushkin, A., Welch, D., & Drummond, A. J. (2022) Accounting for errors in data improves divergence time estimates in single-cell cancer evolution. Molecular Biology and Evolution, 39(8). https://doi.org/10.1093/molbev/msac143

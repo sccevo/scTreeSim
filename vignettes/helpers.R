@@ -206,3 +206,92 @@ plot_binary <- function(tree, bin, errors = NULL, distance = FALSE, color = "typ
                                  guide = ggplot2::guide_legend(override.aes = list(color = "grey40")))
   )
 }
+
+
+# ---- diploid SNVs (GT16) ----
+
+# one colour per nucleotide (Okabe-Ito, distinct from the type colours palette[1:2])
+nucleotide_cols <- c(A = "#009E73", C = "#0072B2", G = "#F0E442", T = "#D55E00")
+# point shapes of the error kinds (all black)
+error_shapes <- c("one allele" = 16, "het -> hom" = 1, "both alleles" = 4)
+
+# Genotypes of the tips as two tips x sites character matrices (allele 1, allele 2; rownames = tip
+# labels), from the `true` or `observed` part of the output of sim_gt16_nt_diploid(), in either
+# format ("genotype": "AA_CG_...", or "alleles": `allele_1`, `allele_2`).
+allele_matrices <- function(tree, snv, which = c("true", "observed")) {
+  df <- snv[[match.arg(which)]]
+  df <- df[match(seq_along(tree@phylo$tip.label), df$node), , drop = FALSE]
+  chars <- function(x) do.call(rbind, strsplit(x, "", fixed = TRUE))
+  m <- if ("genotype" %in% names(df)) {
+    g <- do.call(rbind, strsplit(df$genotype, "_", fixed = TRUE))
+    list(allele1 = substr(g, 1, 1), allele2 = substr(g, 2, 2))
+  } else {
+    list(allele1 = chars(df$allele_1), allele2 = chars(df$allele_2))
+  }
+  lapply(m, function(a) {
+    a <- matrix(a, nrow = nrow(df))
+    dimnames(a) <- list(tree@phylo$tip.label, paste0("site_", seq_len(ncol(a))))
+    a
+  })
+}
+
+# Kind of error of every allele cell, from the true and observed allele_matrices():
+# NA (unchanged), "one allele" (one allele read as another nucleotide), "het -> hom" (a heterozygous
+# site read as homozygous for one of its alleles, as after allelic dropout) or "both alleles".
+error_kinds <- function(true, observed) {
+  changed1 <- true$allele1 != observed$allele1
+  changed2 <- true$allele2 != observed$allele2
+  het_to_hom <- true$allele1 != true$allele2 & observed$allele1 == observed$allele2
+  site_kind <- ifelse(changed1 & changed2, "both alleles",
+                      ifelse(het_to_hom, "het -> hom", "one allele"))
+  list(allele1 = ifelse(changed1, site_kind, NA_character_),
+       allele2 = ifelse(changed2, site_kind, NA_character_))
+}
+
+# Tree with the diploid genotypes of the tips as a heatmap with two rows per tip (allele 1 above,
+# allele 2 below), one colour per nucleotide, from the output of sim_gt16_nt_diploid(). By default
+# the true genotypes are drawn; `errors = TRUE` draws the observed genotypes and marks the alleles
+# that the error changed, with one point shape per kind of error. `distance = TRUE` draws the
+# distance tree.
+plot_alleles <- function(tree, snv, errors = FALSE, distance = FALSE, color = "type", site_width = 0.015) {
+  shown <- allele_matrices(tree, snv, if (errors) "observed" else "true")
+  p <- if (distance) plot_distance_tree(tree, color = color, pad = 0.02) else plot_tree(tree, color = color, pad = 0.02)
+
+  tips <- p$data[p$data$isTip, ]
+  y <- tips$y[match(rownames(shown$allele1), tips$label)]
+  tree_width <- diff(range(p$data$x))
+  w <- site_width * tree_width
+  x0 <- max(p$data$x) + 0.04 * tree_width
+  n_sites <- ncol(shown$allele1)
+
+  # long format: allele 1 slightly above the tip, allele 2 slightly below
+  cells <- function(m, dy) {
+    data.frame(x = x0 + rep(seq_len(n_sites), each = nrow(m)) * w, y = rep(y, n_sites) + dy,
+               value = as.vector(m))
+  }
+  dy <- c(allele1 = 0.22, allele2 = -0.22)
+  tiles <- rbind(cells(shown$allele1, dy[["allele1"]]), cells(shown$allele2, dy[["allele2"]]))
+  tiles$value <- factor(tiles$value, levels = names(nucleotide_cols))
+
+  p <- p +
+    ggplot2::geom_tile(data = tiles, ggplot2::aes(x = x, y = y, fill = value), width = w, height = 0.42,
+                       inherit.aes = FALSE) +
+    ggplot2::annotate("rect", xmin = x0 + w / 2, xmax = x0 + (n_sites + 0.5) * w,
+                      ymin = min(y) - 0.5, ymax = max(y) + 0.5, fill = NA, color = "grey40", linewidth = 0.3) +
+    ggplot2::scale_fill_manual(values = nucleotide_cols, name = "nucleotide", drop = FALSE,
+                               guide = ggplot2::guide_legend(override.aes = list(shape = NA)))
+
+  if (errors) {
+    kinds <- error_kinds(allele_matrices(tree, snv, "true"), shown)
+    marks <- rbind(cells(kinds$allele1, dy[["allele1"]]), cells(kinds$allele2, dy[["allele2"]]))
+    marks <- marks[!is.na(marks$value), ]
+    marks$value <- factor(marks$value, levels = names(error_shapes))
+    p <- p +
+      ggplot2::geom_point(data = marks, ggplot2::aes(x = x, y = y, shape = value), size = 1.1,
+                          color = "black", inherit.aes = FALSE, show.legend = TRUE) +
+      # all kinds in the legend, so that the legends of several plots can be collected
+      ggplot2::scale_shape_manual(values = error_shapes, name = "error", limits = names(error_shapes),
+                                  drop = FALSE)
+  }
+  p
+}

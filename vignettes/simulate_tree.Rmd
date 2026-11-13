@@ -173,3 +173,4 @@ head(bc_binary)
 ```
 
 See `vignette("simulate_binary")` for the substitution model, the clock models and spikes.
+Diploid SNVs under the GT16 model use the same clock models, see `vignette("simulate_SNV")`.
