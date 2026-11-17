@@ -28,9 +28,8 @@ at the root for each gene}
 
 \item{theta}{data frame with a column \code{type} and one numeric column
 per gene (\code{N} columns) giving the OU optimum of that gene for each
-type in the tree. With a single gene column (any name, e.g. \code{theta}
-as in \code{\link{sim_expression_ou}}), the same optima are used for
-every gene.}
+type in the tree. With a single gene column (any name), the same optima are
+used for every gene.}
 
 \item{n_genes}{number of genes \code{N}. If \code{NULL} (default), it is
 inferred from the length of the parameters. It can only differ from the
