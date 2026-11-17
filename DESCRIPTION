@@ -12,21 +12,28 @@ Depends:
 Imports:
     ape,
     dplyr,
+    grDevices,
     magrittr,
     methods,
     Rcpp,
+    rlang,
     stats,
     tibble,
     treeio,
     TreeSim
 Suggests:
+    bslib,
     ggplot2,
+    ggpubr,
     ggtree,
     knitr,
     patchwork,
     phangorn,
     rmarkdown,
+    scico,
+    shiny,
     testthat (>= 3.0.0),
+    viridis,
     withr
 VignetteBuilder: knitr
 LinkingTo: Rcpp
