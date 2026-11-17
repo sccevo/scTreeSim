@@ -159,15 +159,68 @@ expr %>%
   ggplot2::labs(x = "type", y = "expression at the tips")
 ```
 
-# Binary trait, with error and division-triggered spikes
+# Gene expression for multiple genes
 
-A binary trait evolving under a 2-state CTMC, with optional
-gamma-distributed mutation spikes at branches where a division occurred,
-and optional false positive/negative error at the tips.
+`sim_expression_matrix()` runs the OU model for several genes on the same tree.
+`alpha`, `sigmasq` and `root_value` take one value per gene (or a single value shared by
+all genes), and `theta` is a data frame with the `type` column and one column of optima
+per gene. The number of genes is given by the length of these parameters, and `gene_names`
+optionally names the genes (default: 1, ..., N).
 
 ```{r}
-bc_binary <- sim_binary_ontree(mt_tree, l = 10, gamma_spike = TRUE,
-                               spike_mean = 0.3, spike_shape = 2,
-                               alpha = 0.05, beta = 0.02)
+theta_genes <- data.frame(type = c(0L, 1L),
+                          g1 = c(0, 3),   # higher in type 1
+                          g2 = c(1, 1),   # same in both types
+                          g3 = c(2, 0))   # lower in type 1
+
+expr_mat <- sim_expression_matrix(mt_tree, alpha = c(0.5, 0.5, 1), sigmasq = 0.2,
+                                  root_value = 0, theta = theta_genes,
+                                  gene_names = c("gene1", "gene2", "gene3"))
+head(expr_mat)
+```
+
+# Single-cell gene expression counts
+
+`sim_expression_counts_matrix()` turns the expression values at the tips into counts, one
+negative binomial draw per gene and cell, with mean `size_factor * exp(expr)` and dispersion
+`phi` (one value per gene, or a single shared value). The tree is needed to identify the
+sampled tips, which are the cells. Optionally, `size_factor` gives a per-cell scaling
+(e.g. library size), named by the node ids of the tips and shared by all genes.
+
+```{r}
+set.seed(3)
+counts <- sim_expression_counts_matrix(expr_mat, mt_tree, phi = c(0.1, 0.3, 0.5))
+head(counts)
+```
+
+```{r}
+# the same cells with different library sizes
+tips <- mt_tree@data$node[mt_tree@data$status == 1]
+size_factor <- setNames(rlnorm(length(tips), meanlog = 0, sdlog = 0.3), as.character(tips))
+counts_sf <- sim_expression_counts_matrix(expr_mat, mt_tree, phi = c(0.1, 0.3, 0.5),
+                                          size_factor = size_factor)
+```
+
+```{r}
+counts %>%
+  ggplot2::ggplot(ggplot2::aes(x = factor(type), y = gene1, fill = factor(type))) +
+  ggplot2::geom_boxplot(show.legend = FALSE) +
+  ggplot2::scale_fill_manual(values = type_cols) +
+  ggplot2::labs(x = "type", y = "counts of gene1")
+```
+
+# Binary trait, with error and division-triggered spikes
+
+A binary trait evolving under a 2-state CTMC along the tree, with a strict
+clock, division-triggered spikes and false positive/negative error at the tips.
+Each daughter branch of a division gets a gamma-distributed spike (mean 0.05 expected
+substitutions per site), three times larger when a type-1 cell divides.
+
+```{r}
+clk <- clock_strict(0.5, spike = spike(0.05, shape = 2, by_type = c(1, 3)))
+bc_binary <- sim_binary(mt_tree, n_sites = 10, clock = clk, alpha = 0.05, beta = 0.02)
 head(bc_binary)
 ```
+
+See `vignette("simulate_binary")` for the substitution model, the clock models and spikes.
+Diploid SNVs under the GT16 model use the same clock models, see `vignette("simulate_SNV")`.

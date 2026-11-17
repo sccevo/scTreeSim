@@ -104,3 +104,157 @@ sim_expression_ou <- function(tree,
 
   return(evolved_expression)
 }
+
+#' Ornstein-Uhlenbeck Model for the expression of multiple genes along a tree
+#'
+#' Wrapper around \code{\link{sim_expression_ou}} that simulates several genes
+#' independently on the same tree, each with its own OU parameters.
+#'
+#' The OU parameters \code{alpha}, \code{sigmasq}, \code{root_value} and
+#' \code{theta}, and the optional \code{gene_names}, give one value per gene.
+#' Each must have length 1 (the same value is used for every gene) or length
+#' \code{N}, where \code{N} is the number of genes. For \code{theta}, the
+#' length is the number of gene columns (all columns except \code{type}).
+#' \code{N} is the length of the parameters that have length greater than 1.
+#' If all of them have length 1, \code{N} is 1, unless \code{n_genes} is
+#' given, in which case it sets \code{N} and the length-1 parameters are
+#' shared by all the genes. If some parameter has length greater than 1,
+#' \code{n_genes} must equal that length.
+#'
+#' @inheritParams sim_expression_ou
+#' @param alpha numeric vector (length 1 or \code{N}): strength of selection
+#'   for each gene
+#' @param sigmasq numeric vector (length 1 or \code{N}): variance of the
+#'   stochastic driving noise for each gene
+#' @param root_value numeric vector (length 1 or \code{N}): expression value
+#'   at the root for each gene
+#' @param theta data frame with a column \code{type} and one numeric column
+#'   per gene (\code{N} columns) giving the OU optimum of that gene for each
+#'   type in the tree. With a single gene column (any name), the same optima are 
+#'   used for every gene.
+#' @param n_genes number of genes \code{N}. If \code{NULL} (default), it is
+#'   inferred from the length of the parameters. It can only differ from the
+#'   length of the parameters when all of them have length 1.
+#' @param gene_names optional character vector of unique gene names used as
+#'   column names (length 1 or \code{N}; a single name is only valid for
+#'   \code{N = 1}). Like the other parameters, if it has length \code{N} it
+#'   sets the number of genes. If \code{NULL} (default), genes are named by
+#'   their id (\code{1}, ..., \code{N}).
+#'
+#' @return A data frame with one row per node in the tree (tips and internal
+#'   nodes) and columns node, type, followed by one column per gene containing
+#'   the simulated expression of that gene at that node. The gene columns are
+#'   named by \code{gene_names}, or by gene id (\code{1}, ..., \code{N}) by
+#'   default.
+#'
+#' @export
+sim_expression_matrix <- function(tree,
+                                  alpha = 0.5,
+                                  sigmasq = 0.2,
+                                  root_value = 0,
+                                  theta = NULL,
+                                  n_genes = NULL,
+                                  gene_names = NULL) {
+
+  if (!is.data.frame(theta) || !"type" %in% colnames(theta) || ncol(theta) < 2) {
+    stop("`theta` must be a data frame with a column 'type' and one column ",
+         "per gene (or a single gene column shared by all genes).", call. = FALSE)
+  }
+  gene_cols <- setdiff(colnames(theta), "type")
+  if (!all(vapply(theta[gene_cols], is.numeric, logical(1)))) {
+    stop("All gene columns of `theta` must be numeric.", call. = FALSE)
+  }
+
+  for (nm in c("alpha", "sigmasq", "root_value")) {
+    x <- get(nm)
+    if (!is.numeric(x) || length(x) == 0 || anyNA(x)) {
+      stop("`", nm, "` must be a numeric vector without missing values.", call. = FALSE)
+    }
+  }
+
+  if (!is.null(n_genes) &&
+      (length(n_genes) != 1 || !is.numeric(n_genes) || is.na(n_genes) ||
+       n_genes < 1 || n_genes != round(n_genes))) {
+    stop("`n_genes` must be NULL or a single positive integer.", call. = FALSE)
+  }
+
+  # every parameter must have length 1 (shared by all genes) or length N
+  par_lengths <- c(alpha = length(alpha), sigmasq = length(sigmasq),
+                   root_value = length(root_value), theta = length(gene_cols))
+  if (!is.null(gene_names)) {
+    par_lengths <- c(par_lengths, gene_names = length(gene_names))
+  }
+
+  # N is given by the parameters of length > 1; n_genes can only set it when
+  # all of them have length 1
+  n_params <- max(par_lengths)
+  bad <- par_lengths != 1 & par_lengths != n_params
+  if (any(bad)) {
+    stop("All parameters must have length 1 or the number of genes (",
+         n_params, "), but ",
+         paste0("`", names(par_lengths)[bad], "` has length ", par_lengths[bad],
+                collapse = ", "),
+         ".", call. = FALSE)
+  }
+  if (is.null(n_genes)) {
+    n_genes <- n_params
+  } else {
+    n_genes <- as.integer(n_genes)
+    if (n_params > 1 && n_genes != n_params) {
+      stop("`n_genes` (", n_genes, ") must equal the length of the parameters (",
+           n_params, "); it can only differ when all parameters have length 1.",
+           call. = FALSE)
+    }
+  }
+
+  if (!is.null(gene_names)) {
+    gene_names <- as.character(gene_names)
+    if (anyNA(gene_names) || any(gene_names == "")) {
+      stop("`gene_names` must be non-empty and without missing values.",
+           call. = FALSE)
+    }
+    # a length-1 gene_names is not recycled: names must be unique
+    if (length(gene_names) != n_genes) {
+      stop("`gene_names` must be unique; a single name cannot be shared by ",
+           n_genes, " genes.", call. = FALSE)
+    }
+    if (anyDuplicated(gene_names) > 0) {
+      stop("`gene_names` must be unique.", call. = FALSE)
+    }
+    if (any(gene_names %in% c("node", "type"))) {
+      stop("`gene_names` cannot contain 'node' or 'type', which are reserved ",
+           "column names.", call. = FALSE)
+    }
+  } else {
+    gene_names <- as.character(seq_len(n_genes))
+  }
+
+  # recycle length-1 parameters to one value per gene
+  alpha <- rep_len(alpha, n_genes)
+  sigmasq <- rep_len(sigmasq, n_genes)
+  root_value <- rep_len(root_value, n_genes)
+  gene_cols <- rep_len(gene_cols, n_genes)
+
+  per_gene <- lapply(seq_len(n_genes), function(g) {
+    sim_expression_ou(tree,
+                      alpha = alpha[g],
+                      sigmasq = sigmasq[g],
+                      root_value = root_value[g],
+                      theta = data.frame(type = theta$type,
+                                         theta = theta[[gene_cols[g]]]))
+  })
+
+  # sim_expression_ou returns NULL (with a message) on invalid theta
+  if (any(vapply(per_gene, is.null, logical(1)))) {
+    return(NULL)
+  }
+
+  # same tree for every gene, so node and type are shared; keep them once
+  # and add one column per gene
+  result <- per_gene[[1]][, c("node", "type")]
+  for (g in seq_len(n_genes)) {
+    result[[gene_names[g]]] <- per_gene[[g]]$expr
+  }
+
+  return(result)
+}
