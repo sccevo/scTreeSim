@@ -23,6 +23,8 @@ Suggests:
     ggplot2,
     ggtree,
     knitr,
+    patchwork,
+    phangorn,
     rmarkdown,
     testthat (>= 3.0.0),
     withr
