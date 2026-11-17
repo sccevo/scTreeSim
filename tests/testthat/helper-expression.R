@@ -12,3 +12,13 @@ make_tree <- function() {
 theta_shared <- function(tree) {
   data.frame(type = sort(unique(tree@data$type)), theta = 0)
 }
+
+# a tree with three types, with the single-child nodes kept
+make_tree3 <- function(ntaxa = 30) {
+  set.seed(7)
+  tree <- sim_adb_ntaxa_samp(ntaxa = ntaxa, scale = rep(0.2, 3), shape = rep(5, 3), death_prob = rep(0.05, 3),
+                             asym_trans_prob = matrix(c(0, 0, 0, 0.2, 0, 0, 0, 0.2, 0), 3),
+                             sym_trans_prob = diag(c(0.8, 0.8, 1)), collapse = FALSE)
+  expect_false(is.null(tree))
+  tree
+}
