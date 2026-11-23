@@ -67,6 +67,37 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// sim_binary_cpp
+RawVector sim_binary_cpp(IntegerVector parent, IntegerVector child, NumericVector distance, IntegerVector origin_state, double lambda, int n_tips, double alpha, double beta);
+RcppExport SEXP _scTreeSim_sim_binary_cpp(SEXP parentSEXP, SEXP childSEXP, SEXP distanceSEXP, SEXP origin_stateSEXP, SEXP lambdaSEXP, SEXP n_tipsSEXP, SEXP alphaSEXP, SEXP betaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type parent(parentSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type child(childSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type distance(distanceSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type origin_state(origin_stateSEXP);
+    Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< int >::type n_tips(n_tipsSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha(alphaSEXP);
+    Rcpp::traits::input_parameter< double >::type beta(betaSEXP);
+    rcpp_result_gen = Rcpp::wrap(sim_binary_cpp(parent, child, distance, origin_state, lambda, n_tips, alpha, beta));
+    return rcpp_result_gen;
+END_RCPP
+}
+// binary_format_cpp
+SEXP binary_format_cpp(RawVector states, IntegerVector columns, bool as_string);
+RcppExport SEXP _scTreeSim_binary_format_cpp(SEXP statesSEXP, SEXP columnsSEXP, SEXP as_stringSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< RawVector >::type states(statesSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type columns(columnsSEXP);
+    Rcpp::traits::input_parameter< bool >::type as_string(as_stringSEXP);
+    rcpp_result_gen = Rcpp::wrap(binary_format_cpp(states, columns, as_string));
+    return rcpp_result_gen;
+END_RCPP
+}
 // sim_gt16_cpp
 RawVector sim_gt16_cpp(IntegerVector parent, IntegerVector child, NumericVector distance, IntegerVector origin_state, IntegerMatrix dest, NumericMatrix cumulative);
 RcppExport SEXP _scTreeSim_sim_gt16_cpp(SEXP parentSEXP, SEXP childSEXP, SEXP distanceSEXP, SEXP origin_stateSEXP, SEXP destSEXP, SEXP cumulativeSEXP) {
@@ -114,6 +145,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_scTreeSim_sim_adb_loop_cpp", (DL_FUNC) &_scTreeSim_sim_adb_loop_cpp, 7},
     {"_scTreeSim_sim_adb_origin_loop_cpp", (DL_FUNC) &_scTreeSim_sim_adb_origin_loop_cpp, 7},
     {"_scTreeSim_sim_barcodes_cpp", (DL_FUNC) &_scTreeSim_sim_barcodes_cpp, 13},
+    {"_scTreeSim_sim_binary_cpp", (DL_FUNC) &_scTreeSim_sim_binary_cpp, 8},
+    {"_scTreeSim_binary_format_cpp", (DL_FUNC) &_scTreeSim_binary_format_cpp, 3},
     {"_scTreeSim_sim_gt16_cpp", (DL_FUNC) &_scTreeSim_sim_gt16_cpp, 6},
     {"_scTreeSim_add_error_gt16_cpp", (DL_FUNC) &_scTreeSim_add_error_gt16_cpp, 3},
     {"_scTreeSim_gt16_format_cpp", (DL_FUNC) &_scTreeSim_gt16_format_cpp, 3},
