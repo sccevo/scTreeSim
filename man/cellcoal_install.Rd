@@ -4,7 +4,7 @@
 \alias{cellcoal_install}
 \title{Install CellCoal}
 \usage{
-cellcoal_install(version = .cellcoal_version, force = FALSE)
+cellcoal_install(version = .cellcoal_supported, force = FALSE)
 }
 \arguments{
 \item{version}{CellCoal version}
@@ -25,9 +25,10 @@ CellCoal can also be installed with Homebrew (\verb{brew tap dapogon/cellcoal ht
 then \verb{brew install cellcoal}) or built from source; see \code{\link[=cellcoal_docs]{cellcoal_docs()}}.
 }
 \seealso{
-Other CellCoal:
+Other CellCoal interface:
 \code{\link[=cellcoal_docs]{cellcoal_docs()}},
 \code{\link[=cellcoal_path]{cellcoal_path()}},
+\code{\link[=cellcoal_read]{cellcoal_read()}},
 \code{\link[=cellcoal_run]{cellcoal_run()}}
 }
-\concept{CellCoal}
+\concept{CellCoal interface}

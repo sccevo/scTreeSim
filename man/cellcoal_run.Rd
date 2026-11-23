@@ -69,19 +69,13 @@ option, or a \code{key=file} of a group of options) are copied into the run fold
 copies. Files named inside a config file are not: pass them in \code{files} and name them in the config by
 their file name only (e.g. \code{tree_file: tree.nwk}).
 }
-\examples{
-\dontrun{
-run <- cellcoal_run("-n1 -s6 -l1000 -u1e-6 -e10000 -1 -6 -#1")
-run$files
-readLines(file.path(run$results, "trees"))
-
-cellcoal_check(config = list(cells = 20, sites = 1000, coverage = 10))
-}
-}
 \seealso{
-Other CellCoal:
+\code{\link[=cellcoal_read]{cellcoal_read()}} to read the results
+
+Other CellCoal interface:
 \code{\link[=cellcoal_docs]{cellcoal_docs()}},
 \code{\link[=cellcoal_install]{cellcoal_install()}},
-\code{\link[=cellcoal_path]{cellcoal_path()}}
+\code{\link[=cellcoal_path]{cellcoal_path()}},
+\code{\link[=cellcoal_read]{cellcoal_read()}}
 }
-\concept{CellCoal}
+\concept{CellCoal interface}

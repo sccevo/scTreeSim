@@ -2,11 +2,6 @@
 
 quickstart <- "-n1 -s6 -l1000 -u1e-6 -e10000 -1 -6 -#1"
 
-skip_if_no_cellcoal <- function() {
-  skip_on_cran()
-  skip_if_not(cellcoal_available(), "CellCoal is not installed")
-}
-
 # ---- splitting a command line ----
 
 test_that("a command line is split like a shell, without expanding anything", {

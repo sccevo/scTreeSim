@@ -18,9 +18,10 @@ files), the list of changes, the releases and the paper. If CellCoal was install
 \code{\link[=cellcoal_install]{cellcoal_install()}}, the manual of the installed version is also listed (\code{local_manual}).
 }
 \seealso{
-Other CellCoal:
+Other CellCoal interface:
 \code{\link[=cellcoal_install]{cellcoal_install()}},
 \code{\link[=cellcoal_path]{cellcoal_path()}},
+\code{\link[=cellcoal_read]{cellcoal_read()}},
 \code{\link[=cellcoal_run]{cellcoal_run()}}
 }
-\concept{CellCoal}
+\concept{CellCoal interface}

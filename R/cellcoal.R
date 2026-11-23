@@ -11,7 +11,7 @@
 # - options given after --config override the file;
 # - errors are lines starting with "!!!" and give a non-zero exit status.
 
-.cellcoal_version <- "2.7.0"
+.cellcoal_supported <- "2.7.0"
 .cellcoal_repo <- "https://github.com/dapogon/cellcoal"
 .cellcoal_results <- "results"
 
@@ -57,7 +57,7 @@
 #' @param open open the manual in the browser
 #'
 #' @return the links, a named character vector (invisibly)
-#' @family CellCoal
+#' @family CellCoal interface
 #' @export
 cellcoal_docs <- function(open = FALSE) {
   links <- c(
@@ -68,9 +68,12 @@ cellcoal_docs <- function(open = FALSE) {
     releases = paste0(.cellcoal_repo, "/releases"),
     paper = "https://academic.oup.com/mbe/article/37/5/1535/5728646"
   )
+  stopifnot(is.logical(open), length(open) == 1, !is.na(open))
   installed <- .cellcoal_installed()
-  local_manual <- file.path(dirname(installed[1]), "cellcoal.manual.v2.0.html")
-  if (length(installed) > 0 && file.exists(local_manual)) links[["local_manual"]] <- local_manual
+  if (length(installed) > 0) {
+    local_manual <- file.path(dirname(installed[1]), "cellcoal.manual.v2.0.html")
+    if (file.exists(local_manual)) links[["local_manual"]] <- local_manual
+  }
 
   cat(sprintf("%-13s %s", paste0(names(links), ":"), links), sep = "\n")
   cat("Citation: Posada D. (2020) CellCoal: coalescent simulation of single-cell sequencing samples.",
@@ -94,9 +97,10 @@ cellcoal_docs <- function(open = FALSE) {
 #' @param force install again if this version is already installed
 #'
 #' @return the path to the binary (invisibly)
-#' @family CellCoal
+#' @family CellCoal interface
 #' @export
-cellcoal_install <- function(version = .cellcoal_version, force = FALSE) {
+cellcoal_install <- function(version = .cellcoal_supported, force = FALSE) {
+  stopifnot(is.character(version), length(version) == 1, is.logical(force), length(force) == 1)
   name <- paste0("cellcoal-", version, "-", .cellcoal_platform())
   windows <- grepl("windows", name)
   archive <- paste0(name, if (windows) ".zip" else ".tar.gz")
@@ -115,7 +119,10 @@ cellcoal_install <- function(version = .cellcoal_version, force = FALSE) {
   for (suffix in c("", ".sha256")) {
     ok <- tryCatch(utils::download.file(paste0(url, suffix), paste0(file, suffix), mode = "wb", quiet = TRUE) == 0,
                    error = function(e) FALSE, warning = function(w) FALSE)
-    if (!ok) stop("Could not download ", url, suffix, ". Is the version right? See ", .cellcoal_repo, "/releases", call. = FALSE)
+    if (!ok) {
+      stop("Could not download ", url, suffix, ". Is the version right? See ", .cellcoal_repo, "/releases",
+           call. = FALSE)
+    }
   }
   .check_sha256(file, paste0(file, ".sha256"))
 
@@ -157,13 +164,15 @@ cellcoal_install <- function(version = .cellcoal_version, force = FALSE) {
 #'
 #' @return `cellcoal_path()`: the path to the binary; `cellcoal_available()`: `TRUE` or `FALSE`;
 #'   `cellcoal_version()`: the version, a string such as `"2.7.0"`
-#' @family CellCoal
+#' @family CellCoal interface
 #' @export
 cellcoal_path <- function() {
   # a path the user set must exist: do not fall back to another binary silently
   for (set in c(option = getOption("scTreeSim.cellcoal", ""), environment = Sys.getenv("CELLCOAL"))) {
     if (nzchar(set)) {
-      if (!file.exists(set)) stop("CellCoal is not at ", set, " (set by the option scTreeSim.cellcoal or CELLCOAL).", call. = FALSE)
+      if (!file.exists(set)) {
+        stop("CellCoal is not at ", set, " (set by the option scTreeSim.cellcoal or CELLCOAL).", call. = FALSE)
+      }
       return(normalizePath(set))
     }
   }
@@ -233,18 +242,13 @@ cellcoal_version <- function(path = cellcoal_path()) {
 #'     the seed and the version,
 #'   * `stdout`, `stderr`: the output of CellCoal,
 #'   * `version`: the version of CellCoal.
-#' @family CellCoal
+#' @seealso [cellcoal_read()] to read the results
+#' @family CellCoal interface
 #' @export
-#' @examples
-#' \dontrun{
-#' run <- cellcoal_run("-n1 -s6 -l1000 -u1e-6 -e10000 -1 -6 -#1")
-#' run$files
-#' readLines(file.path(run$results, "trees"))
-#'
-#' cellcoal_check(config = list(cells = 20, sites = 1000, coverage = 10))
-#' }
 cellcoal_run <- function(args = character(), config = NULL, files = NULL, dir = NULL, timeout = Inf,
                          echo = FALSE, error = TRUE) {
+  stopifnot(is.numeric(timeout), length(timeout) == 1, timeout > 0)
+  stopifnot(is.logical(echo), length(echo) == 1, is.logical(error), length(error) == 1)
   .cellcoal_exec(args, config, files, dir, check = FALSE, timeout = timeout, echo = echo, error = error)
 }
 
@@ -323,17 +327,17 @@ cellcoal_check <- function(args = character(), config = NULL, files = NULL, erro
 }
 
 # version of the binary, warning once per binary if it is older than the supported one
-.cellcoal_versions <- new.env(parent = emptyenv())
+.cellcoal_version_cache <- new.env(parent = emptyenv())
 .cellcoal_check_version <- function(path) {
-  if (is.null(.cellcoal_versions[[path]])) {
+  if (is.null(.cellcoal_version_cache[[path]])) {
     version <- cellcoal_version(path)
-    if (numeric_version(version) < numeric_version(.cellcoal_version)) {
-      warning("CellCoal ", version, " is older than ", .cellcoal_version, ", the version scTreeSim supports. ",
+    if (numeric_version(version) < numeric_version(.cellcoal_supported)) {
+      warning("CellCoal ", version, " is older than ", .cellcoal_supported, ", the version scTreeSim supports. ",
               "Update it with cellcoal_install().", call. = FALSE)
     }
-    .cellcoal_versions[[path]] <- version
+    .cellcoal_version_cache[[path]] <- version
   }
-  .cellcoal_versions[[path]]
+  .cellcoal_version_cache[[path]]
 }
 
 # split a command line into arguments like a shell: whitespace separates, quotes group, backslash escapes
@@ -448,7 +452,8 @@ cellcoal_check <- function(args = character(), config = NULL, files = NULL, erro
   config <- config[!names(config) %in% c("results_folder", "o")]
   # whole numbers as integers (yaml writes 1 as 1.0, which CellCoal passes on as -n1.0)
   config <- lapply(config, function(x) {
-    if (is.double(x) && all(is.finite(x)) && all(x == round(x)) && all(abs(x) < .Machine$integer.max)) as.integer(x) else x
+    whole <- is.double(x) && all(is.finite(x)) && all(x == round(x)) && all(abs(x) < .Machine$integer.max)
+    if (whole) as.integer(x) else x
   })
   file <- "cellcoal_config.yaml"
   # logicals as true/false (the default of yaml is yes/no)
@@ -459,7 +464,8 @@ cellcoal_check <- function(args = character(), config = NULL, files = NULL, erro
 
 #' @export
 print.cellcoal_run <- function(x, ...) {
-  cat("CellCoal", x$version, if (x$check) "check" else "run", if (x$ok) "(ok)" else paste0("(failed, exit status ", x$status, ")"), "\n")
+  outcome <- if (x$ok) "(ok)" else paste0("(failed, exit status ", x$status, ")")
+  cat("CellCoal", x$version, if (x$check) "check" else "run", outcome, "\n")
   cat("Arguments:", paste(x$args, collapse = " "), "\n")
   cat("Run folder:", x$dir, "\n")
   if (length(x$errors) > 0) cat(paste("Error:", x$errors), sep = "\n")
