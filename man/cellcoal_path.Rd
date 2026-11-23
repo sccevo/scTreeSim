@@ -36,6 +36,7 @@ Other CellCoal interface:
 \code{\link[=cellcoal_docs]{cellcoal_docs()}},
 \code{\link[=cellcoal_install]{cellcoal_install()}},
 \code{\link[=cellcoal_read]{cellcoal_read()}},
-\code{\link[=cellcoal_run]{cellcoal_run()}}
+\code{\link[=cellcoal_run]{cellcoal_run()}},
+\code{\link[=sim_cellcoal]{sim_cellcoal()}}
 }
 \concept{CellCoal interface}

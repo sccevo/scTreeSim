@@ -261,9 +261,7 @@ cellcoal_check <- function(args = character(), config = NULL, files = NULL, erro
 .cellcoal_exec <- function(args, config, files, dir, check, timeout, echo, error) {
   path <- cellcoal_path()
   version <- .cellcoal_check_version(path)
-  if (!is.character(args)) stop("`args` must be a character vector.", call. = FALSE)
-  if (length(args) == 1) args <- .cellcoal_split(args)
-  if (length(args) > 0 && grepl("^cellcoal", basename(args[1]), ignore.case = TRUE)) args <- args[-1]
+  args <- .cellcoal_args(args)
   .cellcoal_warn_output(args, config)
 
   if (is.null(dir)) dir <- tempfile("cellcoal-")
@@ -338,6 +336,14 @@ cellcoal_check <- function(args = character(), config = NULL, files = NULL, erro
     .cellcoal_version_cache[[path]] <- version
   }
   .cellcoal_version_cache[[path]]
+}
+
+# the arguments as a vector: one string is a command line, and a leading program name is dropped
+.cellcoal_args <- function(args) {
+  if (!is.character(args)) stop("`args` must be a character vector.", call. = FALSE)
+  if (length(args) == 1) args <- .cellcoal_split(args)
+  if (length(args) > 0 && grepl("^cellcoal", basename(args[1]), ignore.case = TRUE)) args <- args[-1]
+  args
 }
 
 # split a command line into arguments like a shell: whitespace separates, quotes group, backslash escapes
