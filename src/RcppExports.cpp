@@ -67,11 +67,56 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// sim_gt16_cpp
+RawVector sim_gt16_cpp(IntegerVector parent, IntegerVector child, NumericVector distance, IntegerVector origin_state, IntegerMatrix dest, NumericMatrix cumulative);
+RcppExport SEXP _scTreeSim_sim_gt16_cpp(SEXP parentSEXP, SEXP childSEXP, SEXP distanceSEXP, SEXP origin_stateSEXP, SEXP destSEXP, SEXP cumulativeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type parent(parentSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type child(childSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type distance(distanceSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type origin_state(origin_stateSEXP);
+    Rcpp::traits::input_parameter< IntegerMatrix >::type dest(destSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type cumulative(cumulativeSEXP);
+    rcpp_result_gen = Rcpp::wrap(sim_gt16_cpp(parent, child, distance, origin_state, dest, cumulative));
+    return rcpp_result_gen;
+END_RCPP
+}
+// add_error_gt16_cpp
+RawVector add_error_gt16_cpp(RawVector states, IntegerVector nodes, NumericMatrix error_matrix);
+RcppExport SEXP _scTreeSim_add_error_gt16_cpp(SEXP statesSEXP, SEXP nodesSEXP, SEXP error_matrixSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< RawVector >::type states(statesSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type nodes(nodesSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type error_matrix(error_matrixSEXP);
+    rcpp_result_gen = Rcpp::wrap(add_error_gt16_cpp(states, nodes, error_matrix));
+    return rcpp_result_gen;
+END_RCPP
+}
+// gt16_format_cpp
+List gt16_format_cpp(RawVector states, IntegerVector columns, bool genotype);
+RcppExport SEXP _scTreeSim_gt16_format_cpp(SEXP statesSEXP, SEXP columnsSEXP, SEXP genotypeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< RawVector >::type states(statesSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type columns(columnsSEXP);
+    Rcpp::traits::input_parameter< bool >::type genotype(genotypeSEXP);
+    rcpp_result_gen = Rcpp::wrap(gt16_format_cpp(states, columns, genotype));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_scTreeSim_sim_adb_loop_cpp", (DL_FUNC) &_scTreeSim_sim_adb_loop_cpp, 7},
     {"_scTreeSim_sim_adb_origin_loop_cpp", (DL_FUNC) &_scTreeSim_sim_adb_origin_loop_cpp, 7},
     {"_scTreeSim_sim_barcodes_cpp", (DL_FUNC) &_scTreeSim_sim_barcodes_cpp, 13},
+    {"_scTreeSim_sim_gt16_cpp", (DL_FUNC) &_scTreeSim_sim_gt16_cpp, 6},
+    {"_scTreeSim_add_error_gt16_cpp", (DL_FUNC) &_scTreeSim_add_error_gt16_cpp, 3},
+    {"_scTreeSim_gt16_format_cpp", (DL_FUNC) &_scTreeSim_gt16_format_cpp, 3},
     {NULL, NULL, 0}
 };
 
