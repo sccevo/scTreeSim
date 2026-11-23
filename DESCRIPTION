@@ -14,6 +14,7 @@ Imports:
     dplyr,
     magrittr,
     methods,
+    processx,
     Rcpp,
     stats,
     tibble,
@@ -22,12 +23,14 @@ Imports:
 Suggests:
     ggplot2,
     ggtree,
+    jsonlite,
     knitr,
     patchwork,
     phangorn,
     rmarkdown,
     testthat (>= 3.0.0),
-    withr
+    withr,
+    yaml
 VignetteBuilder: knitr
 LinkingTo: Rcpp
 Config/testthat/edition: 3
