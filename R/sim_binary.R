@@ -51,39 +51,26 @@ sim_binary <- function(tree, n_sites, n_sequences = 1, lambda = 1, origin_seq = 
   if (!is.null(clock)) tree <- clock_tree(tree, clock)
   d <- .node_distances(tree)
 
-  # edges in cladewise order, so every parent is simulated before its children
+  # edges in cladewise order, so every parent is simulated before its children; the root edge
+  # comes first, from the origin (parent 0)
   edges <- ape::reorder.phylo(tree@phylo, order = "cladewise")$edge
   n_tips <- ape::Ntip(tree@phylo)
-  root <- n_tips + 1
+  root <- n_tips + 1L
   nodes <- tibble::as_tibble(tree)$node
 
-  seqs <- vector("list", n_sequences)
-  for (k in seq_len(n_sequences)) {
-    lam <- lambda[k]
-
-    # node x site matrix of states 0/1; the origin sequence evolves along the root edge
-    states <- matrix(NA_integer_, length(d), n_sites)
+  # one sites x nodes raw matrix of states 0/1 per sequence (see src/sim_binary.cpp), with the
+  # error at the tips (the true tip states could also be returned, as in sim_gt16_nt_diploid)
+  seqs <- lapply(lambda, function(lam) {
     start <- if (is.null(origin_seq)) stats::rbinom(n_sites, 1, .binary_pi(lam)[2]) else origin_seq
-    states[root, ] <- .mutate_binary_seq(as.integer(start), lam, d[root])
-    for (i in seq_len(nrow(edges))) {
-      states[edges[i, 2], ] <- .mutate_binary_seq(states[edges[i, 1], ], lam, d[edges[i, 2]])
-    }
-
-    # error is a measurement effect at the tips, after evolution
-    # (the true tip states could also be returned here, as in sim_gt16_nt_diploid)
-    if (alpha > 0 || beta > 0) {
-      tips <- seq_len(n_tips)
-      states[tips, ] <- .add_error(states[tips, , drop = FALSE], alpha, beta)
-    }
-
-    seqs[[k]] <- states[nodes, , drop = FALSE]
-  }
+    sim_binary_cpp(c(0L, edges[, 1]), c(root, edges[, 2]), d, as.integer(start), lam, n_tips, alpha, beta)
+  })
   names(seqs) <- paste0("binary_", seq_len(n_sequences))
 
   if (write_as_string) {
-    return(data.frame(node = nodes, lapply(seqs, apply, 1, paste, collapse = "")))
+    return(data.frame(node = nodes, lapply(seqs, binary_format_cpp, nodes, TRUE)))
   }
-  lapply(seqs, function(m) {
+  lapply(seqs, function(states) {
+    m <- binary_format_cpp(states, nodes, FALSE)
     colnames(m) <- paste0("site_", seq_len(n_sites))
     data.frame(node = nodes, m)
   })
@@ -92,30 +79,4 @@ sim_binary <- function(tree, n_sites, n_sequences = 1, lambda = 1, origin_seq = 
 # equilibrium frequencies of states 0 and 1
 .binary_pi <- function(lambda) {
   c(lambda / (lambda + 1), 1 / (lambda + 1))
-}
-
-# Probability that a site in state s (0 or 1) is in the other state after distance d (vectorised
-# over s and d). Closed form of exp(Qd): the other state's equilibrium frequency times
-# 1 - exp(-r d), with r = q01 + q10 = 1 / (2 pi0 pi1) for one expected substitution per unit d.
-.binary_flip_prob <- function(lambda, s, d) {
-  pi <- .binary_pi(lambda)
-  r <- 1 / (2 * pi[1] * pi[2])
-  other <- 1L - s
-  pi[other + 1L] * (1 - exp(-r * d))
-}
-
-# flip each site independently with its flip probability
-.mutate_binary_seq <- function(seq, lambda, d) {
-  flip <- stats::runif(length(seq)) < .binary_flip_prob(lambda, seq, d)
-  seq[flip] <- 1L - seq[flip]
-  seq
-}
-
-# Observation error on true states (vector or matrix of 0/1, each site independent):
-# a true 1 reads 0 with probability alpha (false negative), a true 0 reads 1 with probability
-# beta (false positive).
-.add_error <- function(states, alpha, beta) {
-  flip <- stats::runif(length(states)) < c(beta, alpha)[states + 1L]
-  states[flip] <- 1L - states[flip]
-  states
 }

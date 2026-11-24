@@ -43,7 +43,9 @@ an object of class \code{rate_profile}, to be used as the \code{time} argument o
 \description{
 Multipliers \code{g(t) >= 0} of a base rate (see \code{\link[=barcode_rate]{barcode_rate()}}) as a function of the
 time \code{t} since the origin of the tree, for the generic barcode simulator
-\code{\link[=sim_barcode_generic]{sim_barcode_generic()}}. The simulator draws events by thinning: branches are cut at the
+\code{\link[=sim_barcode_generic]{sim_barcode_generic()}}. Only the integral of the rate over a branch matters for the state at
+its end, which the simulator computes in closed form for all profiles except \code{rate_fn()} (also inside
+\code{rate_product()}). Those are simulated by thinning instead, which is slower: branches are cut at the
 breakpoints of a profile, and candidate events are accepted with probability \code{g(t)} divided by its
 maximum on the piece.
 }
