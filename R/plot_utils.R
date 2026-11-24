@@ -14,13 +14,30 @@
 
 # colours of the gene models: Brownian motion, single-optimum OU, multi-optima OU
 .model_colours <- function() {
-  cols <- if (requireNamespace("scico", quietly = TRUE)) {
-    scico::scico(3, palette = "batlow")
-  } else {
-    c("#001959", "#7D7D3A", "#FACCFA")
-  }
-  stats::setNames(cols, c("BM", "OU1", "OUM"))
+  # a cool grey for the Brownian motions, teal for the OU genes with one optimum, coral for those with several
+  c(BM = "#7b8ba5", OU1 = "#2a9d8f", OUM = "#e76f51")
 }
+
+# The name of a parameter in a plot, as plotmath to be drawn with label_parsed(): alpha and the other Greek letters,
+# sigma^2, psi[0], ... (other names are quoted). Plotmath draws the Greek letters on every device and in every locale,
+# which Unicode characters do not (the pdf device of R CMD check fails with them in a locale that is not UTF-8).
+.param_math <- function(x) {
+  greek <- c("alpha", "beta", "delta", "epsilon", "eta", "theta", "lambda", "mu", "pi", "rho", "phi", "psi")
+  vapply(as.character(x), function(nm) {
+    if (nm == "sigma2") {
+      "sigma^2"
+    } else if (nm %in% greek) {
+      nm
+    } else if (grepl("^(psi|theta)_?[0-9]+$", nm)) {
+      sprintf("%s[%s]", sub("_?[0-9]+$", "", nm), sub("^[a-z]+_?", "", nm))
+    } else {
+      sprintf('"%s"', nm)
+    }
+  }, "", USE.NAMES = FALSE)
+}
+
+# the first letter in capitals, for the entries of the legends
+.cap <- function(x) paste0(toupper(substring(x, 1, 1)), substring(x, 2))
 
 # One colour per type: the first two are the blue and red of the two-type trees, then a colour-blind friendly
 # palette, and an evenly spaced palette for more than eight types
@@ -154,15 +171,30 @@ plot_sim_tree <- function(tree, layout = "auto", show_tips = FALSE, show_axis = 
 
 #' Histograms of draws from parameter priors
 #'
+#' One histogram per parameter, with a dashed line at the mean of the draws (also in the
+#' title of the panel) and, if the priors are given, a line at each bound of the prior.
+#'
 #' @param draws named list of numeric vectors, one per parameter (the names are
 #'   used as facet labels)
+#' @param priors optionally, a named list with the \code{\link{sim_prior}} that each
+#'   parameter of \code{draws} was drawn from: its finite lower and upper bounds are
+#'   drawn as lines
 #'
 #' @return a ggplot object
+#' @examples
+#' set.seed(1)
+#' priors <- list(alpha = sim_prior("exponential", rate = 1, lower = 0.1),
+#'                sigma2 = sim_prior("uniform", min = 0, max = 2, lower = 0.5, upper = 1.5))
+#' plot_prior_draws(lapply(priors, function(p) rsim_prior(1000, p)), priors)
 #' @export
-plot_prior_draws <- function(draws) {
+plot_prior_draws <- function(draws, priors = NULL) {
   .require_pkgs("ggplot2")
   if (!is.list(draws) || is.null(names(draws)) || !all(vapply(draws, is.numeric, logical(1)))) {
     stop("`draws` must be a named list of numeric vectors.", call. = FALSE)
+  }
+  if (!is.null(priors) && (!is.list(priors) || !all(names(draws) %in% names(priors)) ||
+                           !all(vapply(priors[names(draws)], inherits, logical(1), "sim_prior")))) {
+    stop("`priors` must be a named list with a sim_prior() for every parameter of `draws`.", call. = FALSE)
   }
 
   df <- do.call(rbind, lapply(names(draws), function(nm) {
@@ -170,11 +202,37 @@ plot_prior_draws <- function(draws) {
   }))
   df$parameter <- factor(df$parameter, levels = names(draws))
 
+  # the lines: the mean of the draws and the bounds of the priors
+  means <- vapply(draws, mean, numeric(1), na.rm = TRUE)
+  lines <- data.frame(parameter = names(draws), what = "mean", x = unname(means))
+  if (!is.null(priors)) {
+    bounds <- do.call(rbind, lapply(names(draws), function(nm) {
+      pr <- priors[[nm]]
+      rbind(if (is.finite(pr$lower)) data.frame(parameter = nm, what = "lower bound", x = pr$lower),
+            if (is.finite(pr$upper)) data.frame(parameter = nm, what = "upper bound", x = pr$upper))
+    }))
+    lines <- rbind(lines, bounds)
+  }
+  lines$parameter <- factor(lines$parameter, levels = names(draws))
+  lines$what <- factor(lines$what, levels = c("mean", "lower bound", "upper bound"))
+  # the title of the panel: the parameter, with its mean, as plotmath
+  titles <- sprintf('%s ~ "(mean %s)"', .param_math(names(draws)), format(signif(means, 3)))
+  df$title <- factor(titles[match(as.character(df$parameter), names(draws))], levels = titles)
+  lines$title <- factor(titles[match(as.character(lines$parameter), names(draws))], levels = titles)
+  what_labels <- c("mean" = "Mean", "lower bound" = "Lower bound", "upper bound" = "Upper bound")
+
   ggplot2::ggplot(df, ggplot2::aes(x = .data$value)) +
-    ggplot2::geom_histogram(bins = 50, fill = "lightgray", colour = "white") +
-    ggplot2::facet_wrap(~parameter, scales = "free", nrow = 1) +
+    ggplot2::geom_histogram(bins = 50, fill = "#bccbe0", colour = "white") +
+    ggplot2::geom_vline(data = lines, ggplot2::aes(xintercept = .data$x, colour = .data$what, linetype = .data$what),
+                        linewidth = 0.6) +
+    ggplot2::scale_colour_manual(values = c("mean" = "#1e293b", "lower bound" = "#e76f51", "upper bound" = "#e76f51"),
+                                 labels = what_labels, name = NULL) +
+    ggplot2::scale_linetype_manual(values = c("mean" = "dashed", "lower bound" = "solid", "upper bound" = "solid"),
+                                   labels = what_labels, name = NULL) +
+    ggplot2::facet_wrap(~title, scales = "free", nrow = 1, labeller = ggplot2::label_parsed) +
     ggplot2::theme(panel.background = ggplot2::element_blank(),
-                   strip.background = ggplot2::element_blank()) +
+                   strip.background = ggplot2::element_blank(),
+                   legend.position = "top") +
     ggplot2::xlab("Value") + ggplot2::ylab("Count")
 }
 
@@ -217,6 +275,7 @@ plot_sim_params <- function(truth) {
     data.frame(class = truth$class, class_eff = truth$class_eff, param = p, value = truth[[p]])
   }))
   long$param <- factor(long$param, levels = params)
+  long$label <- factor(.param_math(as.character(long$param)), levels = .param_math(params))   # the strip, as plotmath
   long <- long[!(long$class == "BM" & long$param %in% c("alpha", "eta", psi)), ]
   long <- long[long$class_eff == "OUM" | !(long$param %in% psi), ]
   below_q <- stats::ave(long$value, long$param,
@@ -224,7 +283,7 @@ plot_sim_params <- function(truth) {
   long <- long[below_q, ]
   p_oumparams <- ggplot2::ggplot(long, ggplot2::aes(x = .data$value, fill = .data$class_eff)) +
     ggplot2::geom_histogram(bins = 40) +
-    ggplot2::facet_wrap(~param, scales = "free", nrow = 1) +
+    ggplot2::facet_wrap(~label, scales = "free", nrow = 1, labeller = ggplot2::label_parsed) +
     ggplot2::scale_fill_manual(values = model_names, name = "Model") +
     ggplot2::theme(panel.background = ggplot2::element_blank(),
                    strip.background = ggplot2::element_blank(),
@@ -239,9 +298,9 @@ plot_sim_params <- function(truth) {
   if (length(theta_cols) > 0 && nrow(ou) > 0) {
     theta_cols <- theta_cols[order(as.integer(sub("theta_", "", theta_cols)))]
     long_theta <- do.call(rbind, lapply(theta_cols, function(cn) {
-      data.frame(type = sub("theta_", "type ", cn), class_eff = ou$class_eff, value = ou[[cn]])
+      data.frame(type = sub("theta_", "Type ", cn), class_eff = ou$class_eff, value = ou[[cn]])
     }))
-    long_theta$type <- factor(long_theta$type, levels = sub("theta_", "type ", theta_cols))
+    long_theta$type <- factor(long_theta$type, levels = sub("theta_", "Type ", theta_cols))
     plots$thetas <- ggplot2::ggplot(long_theta, ggplot2::aes(x = .data$value, fill = .data$class_eff)) +
       ggplot2::geom_histogram(bins = 40) +
       ggplot2::facet_wrap(~type, nrow = 1) +
@@ -249,7 +308,7 @@ plot_sim_params <- function(truth) {
       ggplot2::theme(panel.background = ggplot2::element_blank(),
                      strip.background = ggplot2::element_blank(),
                      legend.position = "top") +
-      ggplot2::xlab("Optimum theta of the type (log scale; OU genes)") + ggplot2::ylab("Number of genes")
+      ggplot2::xlab(expression(paste("Optimum ", theta, " of the type (log scale; OU genes)"))) + ggplot2::ylab("Number of genes")
   }
   return(plots)
 }
@@ -336,7 +395,7 @@ plot_sim_expression <- function(expr, tree, truth = NULL, max_genes = 200, gap =
     ggplot2::geom_rect(data = frames,
                        ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax, ymin = .data$ymin, ymax = .data$ymax),
                        fill = NA, color = "grey40", linewidth = 0.3, inherit.aes = FALSE) +
-    ggplot2::scale_fill_viridis_c(name = "expression (log scale)") +
+    ggplot2::scale_fill_viridis_c(name = "Expression (log scale)") +
     ggplot2::labs(caption = paste(c(sprintf("Genes: %s%d (columns), cells: %d (rows, aligned with the tips)",
                                             if (length(genes) < length(gene_cols)) "subset of " else "",
                                             length(genes), nrow(m)), .subsample_note(sub)), collapse = "\n"))
@@ -418,13 +477,15 @@ plot_sim_umap <- function(expr, tree, tips_only = TRUE, n_neighbors = 15, n_pcs 
                    type = factor(tree@data$type[match(nodes, tree@data$node)], levels = sort(unique(tree@data$type))),
                    kind = kind)
   p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$UMAP1, y = .data$UMAP2, color = .data$type)) +
-    ggplot2::scale_color_manual(values = .type_colours(levels(df$type)), name = "cell type", drop = FALSE)
+    ggplot2::scale_color_manual(values = .type_colours(levels(df$type)), name = "Cell type", drop = FALSE)
   if (tips_only) {
     p <- p + ggplot2::geom_point(size = point_size)
   } else {
     p <- p +
       ggplot2::geom_point(ggplot2::aes(shape = .data$kind), size = point_size) +
-      ggplot2::scale_shape_manual(values = c("sampled tip" = 16, "extinct tip" = 4, "internal node" = 1), name = NULL, drop = TRUE)
+      ggplot2::scale_shape_manual(values = c("sampled tip" = 16, "extinct tip" = 4, "internal node" = 1),
+                                  labels = c("sampled tip" = "Sampled tip", "extinct tip" = "Extinct tip", "internal node" = "Internal node"),
+                                  name = NULL, drop = TRUE)
   }
   n_genes <- sprintf("%s%d genes", if (length(genes) < length(gene_cols)) "a subset of " else "", length(genes))
   caption <- if (tips_only) {
@@ -520,7 +581,7 @@ plot_sim_results <- function(sim, max_genes_heatmap = 300, max_cells_heatmap = 5
   p_lowcounts <- ggplot2::ggplot(gene_total_df[gene_total_df$totalcounts < 20, ],
                                  ggplot2::aes(x = .data$totalcounts, fill = .data$class_eff)) +
     ggplot2::geom_histogram(binwidth = 1) +
-    ggplot2::xlab("Realised gene size (genes with fewer than 20 counts)") +
+    ggplot2::xlab("Realised gene size (genes with < 20 counts)") +
     ggplot2::ylab("Number of genes") +
     top_legend +
     ggplot2::scale_fill_manual(values = model_names, name = "Model")
@@ -593,14 +654,15 @@ plot_sim_counts_panel <- function(plots) {
   ggpubr::ggarrange(
     ggpubr::ggarrange(plots$countsmatrix, plots$countspergene, plots$countspercell, nrow = 1),
     ggpubr::ggarrange(plots$zeros_gene, plots$zeros_cell, nrow = 1),
-    ncol = 1
+    ncol = 1, heights = c(1.1, 1)
   )
 }
 
 #' Combined figure of the gene and cell size plots
 #'
-#' Arranges the simulated versus realised gene and cell sizes from
-#' \code{\link{plot_sim_results}} side by side.
+#' Arranges in one row the simulated versus realised gene and cell sizes and the
+#' histogram of the genes with few counts from \code{\link{plot_sim_results}}, with
+#' one legend of the model classes.
 #'
 #' @inheritParams plot_sim_counts_panel
 #'
@@ -608,7 +670,10 @@ plot_sim_counts_panel <- function(plots) {
 #' @export
 plot_sim_sizes_panel <- function(plots) {
   .require_pkgs("ggpubr")
-  ggpubr::ggarrange(plots$genesize, plots$cellsize, nrow = 1)
+  ggpubr::ggarrange(plots$genesize, plots$cellsize,
+                    plots$lowcounts + ggplot2::theme(legend.position = "none"),
+                    nrow = 1, common.legend = TRUE, legend = "top",
+                    legend.grob = ggpubr::get_legend(plots$lowcounts))
 }
 
 
@@ -632,7 +697,9 @@ plot_sim_sizes_panel <- function(plots) {
   cols
 })
 .error_shapes <- c("one allele" = 16, "het -> hom" = 1, "both alleles" = 4)
+.error_labels <- c("one allele" = "One allele", "het -> hom" = "Heterozygous to homozygous", "both alleles" = "Both alleles")
 .binary_cols <- c("0" = "white", "1" = "black", "false positive" = "#D55E00", "false negative" = "#009E73")
+.binary_labels <- c("0" = "0", "1" = "1", "false positive" = "False positive", "false negative" = "False negative")
 .unedited_col <- "#F2F2F2"
 .missing_col <- "#CC79A7"
 
@@ -664,17 +731,17 @@ plot_sim_sizes_panel <- function(plots) {
       p$data$x <- p$data$x + phy$root.edge
     }
     if (!is.null(phy$root.edge)) p <- p + ggtree::geom_rootedge(color = root_col)
-    if (has_type) p <- p + ggplot2::scale_color_manual(values = cols, name = "type")
+    if (has_type) p <- p + ggplot2::scale_color_manual(values = cols, name = "Type")
     return(p +
       ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0.02, pad))) +
       ggtree::theme_tree2() +
-      ggplot2::labs(x = "expected substitutions per site from the origin") +
+      ggplot2::labs(x = "Expected substitutions per site from the origin") +
       ggplot2::theme(legend.position = "bottom", plot.margin = ggplot2::margin(16, 8, 4, 4)))
   }
 
   p <- ggtree::revts(p)  # present = 0
   if (!is.null(phy$root.edge)) p <- p + ggtree::geom_rootedge(color = root_col)
-  if (has_type) p <- p + ggplot2::scale_color_manual(values = cols, name = "type")
+  if (has_type) p <- p + ggplot2::scale_color_manual(values = cols, name = "Type")
   origin <- if (!is.null(phy$origin)) phy$origin else max(ape::node.depth.edgelength(phy)) + phy$root.edge
   breaks <- pretty(c(-origin, 0))
   breaks <- breaks[breaks >= -origin & breaks <= 0]
@@ -685,7 +752,7 @@ plot_sim_sizes_panel <- function(plots) {
     ggplot2::scale_x_continuous(breaks = breaks, labels = abs, expand = ggplot2::expansion(mult = c(0.02, pad))) +
     ggplot2::coord_cartesian(clip = "off") +
     ggtree::theme_tree2() +
-    ggplot2::labs(x = "time before present") +
+    ggplot2::labs(x = "Time before present") +
     ggplot2::theme(legend.position = "bottom", plot.margin = ggplot2::margin(16, 8, 4, 4))
 }
 
@@ -728,6 +795,8 @@ plot_sim_sizes_panel <- function(plots) {
 #'   true genotypes are drawn.
 #' @param distance if TRUE, draw the distance tree instead of the time tree
 #' @param site_width width of a site as a fraction of the width of the tree
+#' @param max_heat_width largest width of the heatmap as a fraction of the width of the tree: with many
+#'   sites, they are drawn narrower so that the tree keeps its share of the plot
 #' @param max_cells largest number of cells (tips) drawn. With more cells, a random subsample of
 #'   \code{max_cells} cells is drawn, with the tree pruned to them, and the plot says so.
 #' @param seed seed of the random subsample (the random number generator of the session is restored
@@ -740,7 +809,7 @@ plot_sim_sizes_panel <- function(plots) {
 #' @return a ggplot object
 #' @export
 plot_sim_snv <- function(tree, snv, errors = FALSE, distance = FALSE, site_width = 0.015, genotypes = FALSE,
-                         max_cells = 500, seed = 1) {
+                         max_cells = 500, seed = 1, max_heat_width = 1) {
   .require_pkgs(c("ggplot2", "ggtree"))
   stopifnot(is.list(snv), all(c("true", "observed") %in% names(snv)))
   sub <- .subsample_cells(tree, max_cells, seed)
@@ -753,9 +822,9 @@ plot_sim_snv <- function(tree, snv, errors = FALSE, distance = FALSE, site_width
   tips <- p$data[p$data$isTip, ]
   y <- tips$y[match(rownames(shown$allele1), tips$label)]
   tree_width <- diff(range(p$data$x))
-  w <- site_width * tree_width
-  x0 <- max(p$data$x) + 0.04 * tree_width
   n_sites <- ncol(shown$allele1)
+  w <- min(site_width, max_heat_width / n_sites) * tree_width
+  x0 <- max(p$data$x) + 0.04 * tree_width
 
   if (genotypes) return(.add_note(.plot_snv_genotypes(p, shown, tree, snv, errors, y, x0, w), .subsample_note(sub)))
 
@@ -778,7 +847,7 @@ plot_sim_snv <- function(tree, snv, errors = FALSE, distance = FALSE, site_width
                       y = bottom, yend = top, color = "black", linewidth = 0.6) +  # between sites
     ggplot2::annotate("rect", xmin = left, xmax = left + n_sites * w, ymin = bottom, ymax = top,
                       fill = NA, color = "grey40", linewidth = 0.3) +
-    ggplot2::scale_fill_manual(values = .nucleotide_cols, name = "nucleotide", drop = FALSE,
+    ggplot2::scale_fill_manual(values = .nucleotide_cols, name = "Nucleotide", drop = FALSE,
                                guide = ggplot2::guide_legend(override.aes = list(shape = NA)))
 
   if (errors) {
@@ -789,7 +858,7 @@ plot_sim_snv <- function(tree, snv, errors = FALSE, distance = FALSE, site_width
     p <- p +
       ggplot2::geom_point(data = marks, ggplot2::aes(x = .data$x, y = .data$y, shape = .data$value),
                           size = 1.1, color = "black", inherit.aes = FALSE, show.legend = TRUE) +
-      ggplot2::scale_shape_manual(values = .error_shapes, name = "error", limits = names(.error_shapes),
+      ggplot2::scale_shape_manual(values = .error_shapes, name = "Error", limits = names(.error_shapes), labels = .error_labels,
                                   drop = FALSE)
   }
   return(.add_note(p, .subsample_note(sub)))
@@ -807,7 +876,7 @@ plot_sim_snv <- function(tree, snv, errors = FALSE, distance = FALSE, site_width
                        width = w, height = 0.9, inherit.aes = FALSE) +
     ggplot2::annotate("rect", xmin = x0 + w / 2, xmax = x0 + (n_sites + 0.5) * w,
                       ymin = min(y) - 0.5, ymax = max(y) + 0.5, fill = NA, color = "grey40", linewidth = 0.3) +
-    ggplot2::scale_fill_manual(values = .genotype_cols, name = "genotype", drop = FALSE,
+    ggplot2::scale_fill_manual(values = .genotype_cols, name = "Genotype", drop = FALSE,
                                guide = ggplot2::guide_legend(nrow = 2, override.aes = list(shape = NA)))
   if (errors) {
     true <- .allele_matrices(tree, snv, "true")
@@ -817,7 +886,7 @@ plot_sim_snv <- function(tree, snv, errors = FALSE, distance = FALSE, site_width
     p <- p +
       ggplot2::geom_point(data = marks, ggplot2::aes(x = .data$x, y = .data$y), shape = 16, size = 1.1,
                           color = "black", inherit.aes = FALSE) +
-      ggplot2::labs(caption = "points: genotypes changed by the error")
+      ggplot2::labs(caption = "Points: genotypes changed by the error")
   }
   p
 }
@@ -863,11 +932,13 @@ plot_sim_snv <- function(tree, snv, errors = FALSE, distance = FALSE, site_width
 #'   error flipped are marked as false positives and false negatives.
 #' @param gap number of empty columns between the sequences
 #' @param site_width width of a site as a fraction of the width of the tree
+#' @param max_heat_width largest width of the heatmap as a fraction of the width of the tree: with many
+#'   sites, they are drawn narrower so that the tree keeps its share of the plot
 #'
 #' @return a ggplot object
 #' @export
 plot_sim_binary <- function(tree, bin, errors = NULL, distance = FALSE, gap = 2, site_width = 0.006,
-                            max_cells = 500, seed = 1) {
+                            max_cells = 500, seed = 1, max_heat_width = 1) {
   .require_pkgs(c("ggplot2", "ggtree"))
   sub <- .subsample_cells(tree, max_cells, seed)
   tree <- sub$tree
@@ -897,7 +968,7 @@ plot_sim_binary <- function(tree, bin, errors = NULL, distance = FALSE, gap = 2,
   p <- .plot_layer_tree(tree, distance = distance, pad = 0.02)
   tree_width <- diff(range(p$data$x))
   offset <- 0.04 * tree_width
-  width <- n_cols * site_width
+  width <- min(n_cols * site_width, max_heat_width)
   w <- width * tree_width / n_cols  # gheatmap places column j at max(x) + offset + j * w
   # frame around every block
   first <- c(1, 1 + cumsum(vapply(mats, ncol, 1L) + gap))[seq_along(mats)]
@@ -911,7 +982,8 @@ plot_sim_binary <- function(tree, bin, errors = NULL, distance = FALSE, gap = 2,
       ggplot2::geom_rect(data = frames,
                          ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax, ymin = .data$ymin, ymax = .data$ymax),
                          fill = NA, color = "grey40", linewidth = 0.3, inherit.aes = FALSE) +
-      ggplot2::scale_fill_manual(values = .binary_cols, name = "state", na.translate = FALSE, breaks = shown,
+      ggplot2::scale_fill_manual(values = .binary_cols, name = "State", na.translate = FALSE, breaks = shown,
+                                 labels = .binary_labels[shown],
                                  guide = ggplot2::guide_legend(override.aes = list(color = "grey40")))
   )
   .add_note(out, .subsample_note(sub))
@@ -932,11 +1004,13 @@ plot_sim_binary <- function(tree, bin, errors = NULL, distance = FALSE, gap = 2,
 #' @param missing_state the value that marks silenced and dropout barcodes (sites)
 #' @param gap number of empty columns between the barcodes
 #' @param site_width width of a site as a fraction of the width of the tree
+#' @param max_heat_width largest width of the heatmap as a fraction of the width of the tree: with many
+#'   sites, they are drawn narrower so that the tree keeps its share of the plot
 #'
 #' @return a ggplot object
 #' @export
 plot_sim_barcodes <- function(tree, bc, n_edits, missing_state = "-", gap = 2, site_width = 0.025,
-                              max_cells = 500, seed = 1) {
+                              max_cells = 500, seed = 1, max_heat_width = 1) {
   .require_pkgs(c("ggplot2", "ggtree"))
   sub <- .subsample_cells(tree, max_cells, seed)
   tree <- sub$tree
@@ -948,16 +1022,17 @@ plot_sim_barcodes <- function(tree, bc, n_edits, missing_state = "-", gap = 2, s
   n_cols <- sum(vapply(mats, ncol, 1L)) + gap * (length(mats) - 1)
   df <- .combine_blocks(mats, "barcode_", gap, names(cols))
 
-  p <- .plot_layer_tree(tree, pad = n_cols * site_width * 0.5 + 0.1)
+  heat_width <- min(n_cols * site_width, max_heat_width)
+  p <- .plot_layer_tree(tree, pad = heat_width * 0.5 + 0.1)
   tree_width <- diff(range(p$data$x))
   # legend: the states that occur, with fixed colours and names
   labels <- stats::setNames(c("unedited", paste("edit", seq_len(n_edits)), "missing"), names(cols))
   shown <- names(cols)[names(cols) %in% unlist(mats)]
   out <- suppressMessages(
-    ggtree::gheatmap(p, df, offset = 0.1 * tree_width, width = n_cols * site_width,
+    ggtree::gheatmap(p, df, offset = 0.1 * tree_width, width = heat_width,
                      colnames = FALSE, color = "white") +
-      ggplot2::scale_fill_manual(values = cols, name = "state", na.translate = FALSE,
-                                 breaks = shown, labels = labels[shown])
+      ggplot2::scale_fill_manual(values = cols, name = "State", na.translate = FALSE,
+                                 breaks = shown, labels = .cap(labels[shown]))
   )
   .add_note(out, .subsample_note(sub))
 }

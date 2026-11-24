@@ -4,15 +4,26 @@
 \alias{plot_prior_draws}
 \title{Histograms of draws from parameter priors}
 \usage{
-plot_prior_draws(draws)
+plot_prior_draws(draws, priors = NULL)
 }
 \arguments{
 \item{draws}{named list of numeric vectors, one per parameter (the names are
 used as facet labels)}
+
+\item{priors}{optionally, a named list with the \code{\link{sim_prior}} that each
+parameter of \code{draws} was drawn from: its finite lower and upper bounds are
+drawn as lines}
 }
 \value{
 a ggplot object
 }
 \description{
-Histograms of draws from parameter priors
+One histogram per parameter, with a dashed line at the mean of the draws (also in the
+title of the panel) and, if the priors are given, a line at each bound of the prior.
+}
+\examples{
+set.seed(1)
+priors <- list(alpha = sim_prior("exponential", rate = 1, lower = 0.1),
+               sigma2 = sim_prior("uniform", min = 0, max = 2, lower = 0.5, upper = 1.5))
+plot_prior_draws(lapply(priors, function(p) rsim_prior(1000, p)), priors)
 }

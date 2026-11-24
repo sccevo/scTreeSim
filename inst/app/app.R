@@ -4,9 +4,10 @@
 #   2. Simulate mutations    - diploid SNVs under the GT16 model (sim_gt16_nt_diploid()).
 #   3. Simulate binary trait - binary sites, e.g. methylation (sim_binary()).
 #   4. Simulate barcodes     - lineage barcodes (sim_barcode_seq(), sim_barcode_nonseq(), sim_barcode_generic()).
-#   5. Simulate expression   - BM / OU1 / OUM process per gene (sim_expression_matrix()), with the parameters of the
-#                              genes drawn from priors or read from a table.
-#   6. Simulate counts       - negative-binomial counts per cell and gene (sim_expression_counts_matrix()).
+#   5. Simulate expression   - two sub-tabs. "Simulate latent expression": BM / OU1 / OUM process per gene
+#                              (sim_expression_matrix()), with the parameters of the genes drawn from priors or read from a
+#                              table. "Simulate counts": negative-binomial counts per cell and gene
+#                              (sim_expression_counts_matrix()).
 #
 # The simulations are done by the functions of the package and the figures by its plot_*() functions
 # (R/plot_utils.R). This file contains the interface, the draws of the per-gene parameters from their priors, and the
@@ -408,10 +409,10 @@ parse_probs <- function(txt) {
 
 # plot height (pixels) that grows with the number of cells that are drawn (at most MAX_CELLS_PLOT: above that the plots show
 # a random subsample), for the heatmaps of the layers
-layer_plot_height <- function(tree_fun, per_tip, min_height = 550) {
+layer_plot_height <- function(tree_fun, per_tip, min_height = 420, max_height = 1100) {
   function() {
     n_tips <- tryCatch(length(tree_fun()@phylo$tip.label), error = function(e) 0)
-    max(min_height, per_tip * min(n_tips, MAX_CELLS_PLOT))
+    min(max_height, max(min_height, per_tip * min(n_tips, MAX_CELLS_PLOT)))
   }
 }
 
@@ -461,12 +462,74 @@ trans_matrix_ui <- function(prefix, title, default, keep) {
   )
 }
 
+# ======================================================================================================
+# Look of the app
+# ======================================================================================================
+
+# A compact, light theme: system fonts (no downloads), a small base size so that more fits on the screen, one accent colour.
+app_theme <- bs_theme(
+  version = 5,
+  bg = "#ffffff", fg = "#1e293b", primary = "#2f6fed", secondary = "#64748b",
+  success = "#16a34a", info = "#0ea5e9", warning = "#d97706", danger = "#dc2626",
+  base_font = font_collection("system-ui", "-apple-system", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"),
+  code_font = font_collection("ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"),
+  "font-size-base" = "0.8125rem",
+  "line-height-base" = "1.4",
+  "input-padding-y" = "0.22rem", "input-padding-x" = "0.5rem", "input-font-size" = "0.8125rem",
+  "btn-padding-y" = "0.25rem", "btn-padding-x" = "0.7rem", "btn-font-size" = "0.8125rem",
+  "border-radius" = "0.4rem", "border-radius-lg" = "0.6rem"
+)
+
+app_css <- "
+  :root { --app-border: #e2e8f0; --app-muted: #64748b; --app-bg: #f1f4f9; --app-side: #fbfcfe; }
+  body { background: var(--app-bg); }
+  .shiny-output-error-validation { color: #b91c1c; font-weight: 500; }
+
+  /* top bar */
+  .navbar { border-bottom: 1px solid var(--app-border); box-shadow: 0 1px 3px rgba(15, 23, 42, .05); padding-top: .1rem; padding-bottom: .1rem; }
+  .navbar-brand { font-weight: 700; letter-spacing: -.02em; font-size: 1.05rem; color: var(--bs-primary) !important; }
+  .navbar .nav-link { font-weight: 500; color: #475569; padding: .6rem .85rem; }
+  .navbar .nav-link.active { color: var(--bs-primary); }
+  .nav-link.disabled, .btn.disabled { opacity: .38; }
+
+  /* sub-tabs and tabs of the cards */
+  .nav-pills { gap: .25rem; margin: .35rem .5rem .1rem; }
+  .nav-pills .nav-link { padding: .25rem .8rem; font-weight: 500; border-radius: 999px; color: #475569; }
+  .nav-pills .nav-link.active { background: var(--bs-primary); color: #fff; }
+  .nav-underline .nav-link { padding: .35rem .15rem; font-weight: 500; }
+
+  /* sidebars */
+  .bslib-sidebar-layout > .sidebar { background: var(--app-side); }
+  .sidebar h5 { font-size: .95rem; font-weight: 700; margin: 0 0 .3rem; }
+  .sidebar h6 { font-size: .64rem; text-transform: uppercase; letter-spacing: .08em; color: var(--app-muted); font-weight: 700; margin: .75rem 0 .3rem; }
+  .sidebar hr { margin: .6rem 0; opacity: .14; }
+  .sidebar .form-group, .sidebar .shiny-input-container { margin-bottom: .5rem; }
+  .control-label, .form-label { font-size: .76rem; font-weight: 600; color: #334155; margin-bottom: .15rem; }
+  .help-block { display: block; font-size: .71rem; color: var(--app-muted); line-height: 1.35; margin: 0 0 .5rem; }
+  .shiny-options-group .form-check, .checkbox, .radio { margin-bottom: .1rem; min-height: 0; }
+  .form-check-label { font-size: .79rem; }
+  .irs--shiny .irs-min, .irs--shiny .irs-max { font-size: .6rem; }
+  .irs--shiny .irs-grid-text { font-size: .55rem; }
+  .irs--shiny.irs-with-grid { height: 54px; }
+  .irs--shiny .irs-grid { top: 33px; bottom: auto; }
+  .action-bar { position: sticky; bottom: 0; z-index: 3; display: flex; flex-wrap: wrap; gap: .4rem; align-items: center;
+                background: var(--app-side); border-top: 1px solid var(--app-border); margin: .6rem -1rem -1rem; padding: .6rem 1rem; }
+
+  /* cards, tables of text, notices */
+  .card { border: 1px solid var(--app-border); border-radius: .6rem; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+  .card-header { background: #fff; font-weight: 600; font-size: .78rem; color: #334155; border-bottom: 1px solid #eef2f7; padding: .5rem .85rem; }
+  .card-body { padding: .7rem .85rem; }
+  pre.shiny-text-output { font-size: .72rem; background: #f8fafc; border: 1px solid var(--app-border); border-radius: .5rem; padding: .55rem .75rem; }
+  .alert { font-size: .74rem; padding: .35rem .65rem; margin-bottom: .5rem; }
+"
+
 ui <- page_navbar(
   title = "scTreeSim",
-  theme = bs_theme(version = 5),
+  theme = app_theme,
+  navbar_options = navbar_options(bg = "#ffffff", theme = "light", underline = TRUE),
   id = "main_tabs",
   header = tagList(
-    tags$style(HTML(".shiny-output-error-validation { color: #b30000; font-weight: 500; }")),
+    tags$style(HTML(app_css)),
     # The tabs and the buttons that need a tree are disabled until there is one (and the counts until there is
     # expression): the server sends the list of the ones to enable or disable. Everything but the tree starts disabled.
     tags$script(HTML("
@@ -507,11 +570,11 @@ ui <- page_navbar(
     "Simulate tree", value = "tree",
     layout_sidebar(
       sidebar = sidebar(
-        width = 420,
+        width = 330,
         h5("scTreeSim parameters"),
         radioButtons("tree_stop", "The simulation stops at",
-                     choices = c("A number of sampled tips: sim_adb_ntaxa_samp()" = "ntaxa",
-                                 "A fixed time since the origin: sim_adb_origin_samp()" = "time")),
+                     choices = c("Number of sampled tips" = "ntaxa", "Fixed time since the origin" = "time")),
+        helpText("sim_adb_ntaxa_samp() or sim_adb_origin_samp()."),
         conditionalPanel("input.tree_stop == 'ntaxa'",
           numericInput("n_tips", "Number of tips (cells), up to 10,000", value = 100, min = 10, max = 10000, step = 10),
           helpText("With many tips the plots of the tree and of the layers are drawn for a random subsample of the cells: the simulations themselves use all the cells.")),
@@ -522,7 +585,7 @@ ui <- page_navbar(
         numericInput("n_types", "Number of types", value = 2, min = 1, max = 10, step = 1),
         helpText("The mean lifetime of a type is scale x shape, so the height of the tree follows from the lifetimes unless it is normalized below."),
         uiOutput("type_params"),
-        sliderInput("rho", "Sampling probability (rho)", min = 0.05, max = 1, value = 1, step = 0.05),
+        sliderInput("rho", "Sampling probability (ρ)", min = 0.05, max = 1, value = 1, step = 0.05),
         checkboxInput("keep_single", "Keep single-child nodes (collapse = FALSE)", value = TRUE),
         helpText("Keeps the divisions where a lineage died and the type changes that happen there. Without them a type change is hidden on a longer branch, which then takes the type of the node it ends in. This is needed for the type-dependent expression optima, the division-triggered spikes of the mutations and the binary trait, and the type-dependent barcode rates."),
         checkboxInput("normalize_height", "Normalize the tree height", value = FALSE),
@@ -539,7 +602,8 @@ ui <- page_navbar(
         helpText("auto: rectangular, and circular for trees with more than 1,000 tips."),
         checkboxInput("tree_tips", "Show tip labels (up to 300 tips)", value = FALSE),
         checkboxInput("tree_axis", "Show time axis (rectangular / slanted layouts)", value = TRUE),
-        actionButton("sim_tree", "Simulate tree", class = "btn-primary")
+        div(class = "action-bar",
+            actionButton("sim_tree", "Simulate tree", class = "btn-primary btn-sm"))
       ),
       card(card_header("Simulated tree, coloured by type"),
            # the plot can be taller than the card (many tip labels): the card body scrolls
@@ -554,7 +618,7 @@ ui <- page_navbar(
     "Simulate mutations", value = "mutations",
     layout_sidebar(
       sidebar = sidebar(
-        width = 420,
+        width = 330,
         h5("Diploid SNVs (GT16 model)"),
         numericInput("snv_seed", "Random seed (mutations)", value = 2, step = 1),
         radioButtons("snv_origin", "Genotype at the origin",
@@ -574,27 +638,28 @@ ui <- page_navbar(
         fluidRow(column(4, numericInput("snv_r_CG", "CG", value = 1, min = 0, step = 0.5)),
                  column(4, numericInput("snv_r_CT", "CT", value = 1, min = 0, step = 0.5)),
                  column(4, numericInput("snv_r_GT", "GT", value = 1, min = 0, step = 0.5))),
-        fluidRow(column(3, numericInput("snv_pi_A", "pi A", value = 0.25, min = 0, step = 0.05)),
-                 column(3, numericInput("snv_pi_C", "pi C", value = 0.25, min = 0, step = 0.05)),
-                 column(3, numericInput("snv_pi_G", "pi G", value = 0.25, min = 0, step = 0.05)),
-                 column(3, numericInput("snv_pi_T", "pi T", value = 0.25, min = 0, step = 0.05))),
+        fluidRow(column(6, numericInput("snv_pi_A", "π A", value = 0.25, min = 0, step = 0.05)),
+                 column(6, numericInput("snv_pi_C", "π C", value = 0.25, min = 0, step = 0.05))),
+        fluidRow(column(6, numericInput("snv_pi_G", "π G", value = 0.25, min = 0, step = 0.05)),
+                 column(6, numericInput("snv_pi_T", "π T", value = 0.25, min = 0, step = 0.05))),
         hr(),
         h6("Clock"),
         clockUI("snv_clock"),
         hr(),
         h6("Sequencing error at the tips"),
-        numericInput("snv_epsilon", "epsilon: amplification and sequencing error", value = 0, min = 0, max = 1, step = 0.05),
-        numericInput("snv_delta", "delta: allelic dropout", value = 0, min = 0, max = 1, step = 0.05),
+        numericInput("snv_epsilon", "ε: amplification and sequencing error", value = 0, min = 0, max = 1, step = 0.05),
+        numericInput("snv_delta", "δ: allelic dropout", value = 0, min = 0, max = 1, step = 0.05),
         hr(),
         h6("Display"),
         checkboxInput("snv_errors", "Show the observed genotypes and mark the errors", value = FALSE),
-        helpText("The marks show where the error changed the genotype of a cell: they only appear when epsilon or delta is above 0."),
+        helpText("The marks show where the error changed the genotype of a cell: they only appear when ε or δ is above 0."),
         checkboxInput("snv_genotypes", "Show the 16 genotypes in 16 colours (instead of two tiles of four nucleotides per site)", value = FALSE),
         checkboxInput("snv_distance", "Draw the distance tree (branch lengths in expected substitutions)", value = FALSE),
-        actionButton("sim_snv", "Simulate mutations", class = "btn-primary"),
-        downloadButton("download_snv", "Download (.rds)")
+        div(class = "action-bar",
+            actionButton("sim_snv", "Simulate mutations", class = "btn-primary btn-sm"),
+            downloadButton("download_snv", "Download (.rds)", class = "btn-outline-secondary btn-sm"))
       ),
-      card(card_header("Genotypes of the cells (one row per cell; two tiles per site: allele 1 left, allele 2 right)"),
+      card(card_header(textOutput("snv_card_title", inline = TRUE)),
            card_body(fillable = FALSE, style = "overflow-y: auto;",
                      uiOutput("snv_note"),
                      plotOutput("snv_plot", height = "auto", fill = FALSE),
@@ -607,11 +672,11 @@ ui <- page_navbar(
     "Simulate binary trait", value = "binary",
     layout_sidebar(
       sidebar = sidebar(
-        width = 420,
+        width = 330,
         h5("Binary sites"),
         numericInput("bin_seed", "Random seed (binary trait)", value = 3, step = 1),
         sliderInput("bin_n_sequences", "Number of independent sequences", min = 1, max = 5, value = 1, step = 1),
-        numericInput("bin_lambda", "lambda: rate of 1 -> 0 relative to 0 -> 1", value = 1, min = 0.01, step = 0.1),
+        numericInput("bin_lambda", "λ: rate of 1 → 0 relative to 0 → 1", value = 1, min = 0.01, step = 0.1),
         radioButtons("bin_origin", "Sequence at the origin",
                      choices = c("Drawn from the equilibrium" = "random", "All 0" = "zeros", "All 1" = "ones", "Custom" = "custom")),
         conditionalPanel("input.bin_origin == 'custom'",
@@ -624,14 +689,15 @@ ui <- page_navbar(
         clockUI("bin_clock"),
         hr(),
         h6("Error at the tips"),
-        numericInput("bin_alpha", "alpha: false negative rate (1 read as 0)", value = 0, min = 0, max = 1, step = 0.05),
-        numericInput("bin_beta", "beta: false positive rate (0 read as 1)", value = 0, min = 0, max = 1, step = 0.05),
+        numericInput("bin_alpha", "α: false negative rate (1 read as 0)", value = 0, min = 0, max = 1, step = 0.05),
+        numericInput("bin_beta", "β: false positive rate (0 read as 1)", value = 0, min = 0, max = 1, step = 0.05),
         hr(),
         h6("Display"),
         checkboxInput("bin_errors", "Mark the errors (false positives and negatives; one sequence only)", value = FALSE),
         checkboxInput("bin_distance", "Draw the distance tree (branch lengths in expected substitutions)", value = FALSE),
-        actionButton("sim_bin", "Simulate binary trait", class = "btn-primary"),
-        downloadButton("download_bin", "Download (.rds)")
+        div(class = "action-bar",
+            actionButton("sim_bin", "Simulate binary trait", class = "btn-primary btn-sm"),
+            downloadButton("download_bin", "Download (.rds)", class = "btn-outline-secondary btn-sm"))
       ),
       card(card_header("Binary sequences of the cells (black = 1, white = 0)"),
            card_body(fillable = FALSE, style = "overflow-y: auto;",
@@ -646,7 +712,7 @@ ui <- page_navbar(
     "Simulate barcodes", value = "barcodes",
     layout_sidebar(
       sidebar = sidebar(
-        width = 420,
+        width = 330,
         h5("Lineage barcodes"),
         helpText("The barcodes evolve in the time of the tree: the rates below are per unit of time, so they are the clock of this tab. The relaxed clocks and spikes of the mutations and binary trait tabs do not apply to barcodes."),
         numericInput("bc_seed", "Random seed (barcodes)", value = 4, step = 1),
@@ -692,8 +758,9 @@ ui <- page_navbar(
           checkboxInput("bc_by_type", "Different editing rate per type", value = FALSE),
           conditionalPanel("input.bc_by_type", uiOutput("bc_mult_ui"))),
         hr(),
-        actionButton("sim_bc", "Simulate barcodes", class = "btn-primary"),
-        downloadButton("download_bc", "Download (.rds)")
+        div(class = "action-bar",
+            actionButton("sim_bc", "Simulate barcodes", class = "btn-primary btn-sm"),
+            downloadButton("download_bc", "Download (.rds)", class = "btn-outline-secondary btn-sm"))
       ),
       card(card_header("Barcodes of the cells (grey = unedited, colours = edit outcomes, pink = missing)"),
            card_body(fillable = FALSE, style = "overflow-y: auto;",
@@ -703,16 +770,16 @@ ui <- page_navbar(
     )
   ),
 
-  # ---------------------------------------------------------------- Gene expression: expression and counts
+  # ---------------------------------------------------------------- Simulate expression: latent expression and counts
   nav_panel(
-    "Gene expression", value = "expression",
-    navset_tab(
+    "Simulate expression", value = "expression",
+    navset_pill(
       id = "expr_subtab",
       nav_panel(
-        "Simulate expression", value = "expr",
+        "Simulate latent expression", value = "expr",
         layout_sidebar(
           sidebar = sidebar(
-            width = 420,
+            width = 330,
             h5("BM / OU1 / OUM process per gene"),
             numericInput("expr_seed", "Random seed (expression)", value = 1, step = 1),
             helpText("The expression evolves on the tree with this seed; the parameters of the genes are drawn from the priors with the seed + 1."),
@@ -721,48 +788,50 @@ ui <- page_navbar(
             conditionalPanel("input.expr_source == 'table'",
               fileInput("expr_table", "Table of gene parameters (.csv)", accept = c(".csv", "text/csv", "text/plain")),
               uiOutput("expr_table_help"),
-              downloadButton("expr_template", "Download a template (.csv)"),
+              downloadButton("expr_template", "Download a template (.csv)", class = "btn-outline-secondary btn-sm"),
               hr()),
             conditionalPanel("input.expr_source == 'priors'",
               sliderInput("n_gene", "Number of genes (one independent process per gene)", min = 100, max = 20000, value = 1000, step = 100),
               helpText("Large numbers of genes take longer to simulate and plot; with many cells the number of genes is limited (cells x genes at most 20 million)."),
               sliderInput("pi_ou", "Probability that a gene is OU (otherwise BM)", min = 0, max = 1, value = 0.5, step = 0.05),
-              helpText("Within OU genes, OU1 vs OUM is controlled by eta: eta = 0 gives OU1, larger eta separates the optima of the types."),
+              helpText("Within OU genes, OU1 vs OUM is controlled by η: η = 0 gives OU1, larger η separates the optima of the types."),
               hr(),
               h6("Gene baseline level g"),
-              helpText("Every gene has a baseline level g, on the count scale: the level around which its expression evolves. Its log, theta_base = log g, is the centre of the optima of the types of an OU gene and the starting value of a Brownian gene, so g is a parameter of the expression, not of the counts. The genes differ in g: log g is normal across genes."),
+              helpText("Every gene has a baseline level g, on the count scale: the level around which its expression evolves. Its log, θ_base = log g, is the centre of the optima of the types of an OU gene and the starting value of a Brownian gene, so g is a parameter of the expression, not of the counts. The genes differ in g: log g is normal across genes."),
               numericInput("mean_count_gene", "Mean of g across the genes", value = 1, min = 0.001, step = 0.5),
               helpText("This is the average of g over the genes (not of log g, which is lower, and not the mean count of a gene, which is higher: about g times exp(V / 2), with V the variance of its log expression). To fix the mean count exactly, calibrate it in the counts sub-tab."),
               sliderInput("log_g_sd", "SD of log g across the genes (how different the baseline levels of the genes are)", min = 0, max = 4, value = 1.5, step = 0.1),
               hr(),
               h6("Priors of the parameters"),
-              helpText("Every parameter is drawn from the chosen distribution and parameters, truncated to the bounds (leave a bound empty for none). The optima of the types, theta, follow from the baseline level, eta and psi: their distribution is shown in the plots."),
-              priorUI("alpha_prior", "alpha (strength of the reversion, OU genes)", selected = "Exponential", lower = 0.1, min_lower = 0),
-              helpText("The lower bound of alpha is the threshold from which a gene is OU rather than a Brownian motion."),
-              priorUI("sigma2_prior", "sigma2 (diffusion)", selected = "Exponential", lower = 1e-8, upper = 2, min_lower = 0),
-              priorUI("eta_prior", "eta (separation between the optima of the types, at least 0)", selected = "Exponential", lower = 0, min_lower = 0),
-              sliderInput("psi_concentration", "psi: concentration of its Dirichlet prior (the share of each type in the deviations of the optima; < 1: optima far apart, > 1: close)",
+              helpText("Every parameter is drawn from the chosen distribution and parameters, truncated to the bounds (leave a bound empty for none). The optima of the types, θ, follow from the baseline level, η and ψ: their distribution is shown in the plots."),
+              priorUI("alpha_prior", "α (strength of the reversion, OU genes)", selected = "Exponential", lower = 0.1, min_lower = 0),
+              helpText("The lower bound of α is the threshold from which a gene is OU rather than a Brownian motion."),
+              priorUI("sigma2_prior", "σ² (diffusion)", selected = "Exponential", lower = 1e-8, upper = 2, min_lower = 0),
+              priorUI("eta_prior", "η (separation between the optima of the types, at least 0)", selected = "Exponential", lower = 0, min_lower = 0),
+              sliderInput("psi_concentration", "ψ: concentration of its Dirichlet prior (the share of each type in the deviations of the optima; < 1: optima far apart, > 1: close)",
                           min = 0.1, max = 5, value = 0.5, step = 0.1)),
             sliderInput("gap_cutoff", "Effective OUM class: largest difference between the optima > cutoff x stationary sd", min = 0.1, max = 5, value = 1, step = 0.1),
             uiOutput("collapsed_tree_note"),
             hr(),
-            actionButton("sim_expr", "Simulate expression", class = "btn-primary"),
-            downloadButton("download_expr", "Download (.rds)"),
-            downloadButton("download_expr_truth", "True parameters (.csv)")
+            div(class = "action-bar",
+                actionButton("sim_expr", "Simulate latent expression", class = "btn-primary btn-sm"),
+                downloadButton("download_expr", "Download (.rds)", class = "btn-outline-secondary btn-sm"),
+                downloadButton("download_expr_truth", "True parameters (.csv)", class = "btn-outline-secondary btn-sm"))
           ),
-          navset_card_tab(
-            nav_panel("Priors", card_body(fillable = FALSE, plotOutput("prior_preview", height = "320px", fill = FALSE))),
+          navset_card_underline(
+            nav_panel("Priors", card_body(fillable = FALSE, plotOutput("prior_preview", height = "260px", fill = FALSE))),
             nav_panel("Simulated expression",
                       # the heatmap grows with the number of cells: the sub-tab scrolls instead of squeezing the plots
                       card_body(fillable = FALSE, style = "overflow-y: auto;",
                                 uiOutput("expr_note"),
                                 plotOutput("expr_heatmap", height = "auto", fill = FALSE),
-                                plotOutput("oum_params_plot", height = "380px", fill = FALSE),
-                                plotOutput("thetas_plot", height = "320px", fill = FALSE),
-                                plotOutput("class_plot", height = "320px", fill = FALSE))),
+                                plotOutput("oum_params_plot", height = "280px", fill = FALSE),
+                                layout_columns(col_widths = c(8, 4), fill = FALSE, fillable = FALSE,
+                                               plotOutput("thetas_plot", height = "260px", fill = FALSE),
+                                               plotOutput("class_plot", height = "260px", fill = FALSE)))),
             nav_panel("UMAP", card_body(fillable = FALSE,
                                     checkboxInput("umap_tips_only", "Only the tip cells (the sampled cells). Untick it to add the internal nodes and the extinct lineages.", value = TRUE),
-                                    plotOutput("expr_umap", height = "650px", fill = FALSE))),
+                                    plotOutput("expr_umap", height = "580px", fill = FALSE))),
             nav_panel("Summary", verbatimTextOutput("expr_summary"))
           )
         )
@@ -771,7 +840,7 @@ ui <- page_navbar(
         "Simulate counts", value = "counts",
         layout_sidebar(
           sidebar = sidebar(
-            width = 420,
+            width = 330,
             h5("Negative-binomial counts"),
             helpText("Simulates the counts at the tips from the expression of the previous sub-tab."),
             numericInput("counts_seed", "Random seed (counts)", value = 1, step = 1),
@@ -782,26 +851,26 @@ ui <- page_navbar(
             h6("Sequencing depth (counts per cell)"),
             sliderInput("cell_size_sd", "SD (log scale) of the cell size factor", min = 0, max = 2, value = 0.9, step = 0.05),
             hr(),
-            h6("Overdispersion (NB: var = mu + phi mu^2)"),
+            h6("Overdispersion (NB: Var = μ + φ μ²)"),
             radioButtons("phi_mode", "Overdispersion model",
                          choices = c("Prior, independent of the mean" = "prior", "Trend: decreases with the gene level" = "trend")),
             conditionalPanel("input.phi_mode == 'prior'",
-                             priorUI("phi_prior", "Prior of phi", selected = "Lognormal", lower = 1e-8, min_lower = 0)),
+                             priorUI("phi_prior", "Prior of φ", selected = "Lognormal", lower = 1e-8, min_lower = 0)),
             conditionalPanel("input.phi_mode == 'trend'",
-                             helpText("phi ~ lognormal(log(a0 + a1 / g_g), sd), with g_g the gene baseline level."),
-                             numericInput("phi_a0", "a0 (asymptotic overdispersion)", value = 0.1, min = 0, step = 0.05),
-                             numericInput("phi_a1", "a1 (extra overdispersion at low levels)", value = 0.5, min = 0, step = 0.1),
-                             numericInput("phi_sd", "sd (log scale) around the trend", value = 0.3, min = 0, step = 0.1)),
+                             helpText("φ ~ lognormal(log(a₀ + a₁ / g), SD), with g the gene baseline level."),
+                             numericInput("phi_a0", "a₀ (asymptotic overdispersion)", value = 0.1, min = 0, step = 0.05),
+                             numericInput("phi_a1", "a₁ (extra overdispersion at low levels)", value = 0.5, min = 0, step = 0.1),
+                             numericInput("phi_sd", "SD (log scale) around the trend", value = 0.3, min = 0, step = 0.1)),
             hr(),
-            actionButton("sim_counts", "Simulate counts", class = "btn-primary"),
-            downloadButton("download_counts", "Download (.rds)"),
-            downloadButton("download_counts_truth", "True gene parameters (.csv)"),
-            downloadButton("download_cell_sizes", "True cell sizes (.csv)")
+            div(class = "action-bar",
+                actionButton("sim_counts", "Simulate counts", class = "btn-primary btn-sm"),
+                downloadButton("download_counts", "Download (.rds)", class = "btn-outline-secondary btn-sm"),
+                downloadButton("download_counts_truth", "True gene parameters (.csv)", class = "btn-outline-secondary btn-sm"),
+                downloadButton("download_cell_sizes", "True cell sizes (.csv)", class = "btn-outline-secondary btn-sm"))
           ),
-          navset_card_tab(
-            nav_panel("Counts", plotOutput("counts_plots", height = "1000px")),
-            nav_panel("Gene and cell sizes", plotOutput("sizes_plots", height = "420px"),
-                      plotOutput("lowcounts_plot", height = "320px")),
+          navset_card_underline(
+            nav_panel("Counts", plotOutput("counts_plots", height = "700px")),
+            nav_panel("Gene and cell sizes", card_body(fillable = FALSE, plotOutput("sizes_plots", height = "330px", fill = FALSE))),
             nav_panel("Summary", verbatimTextOutput("sim_summary"))
           )
         )
@@ -811,8 +880,8 @@ ui <- page_navbar(
 
   nav_spacer(),
   nav_item(div(class = "d-flex gap-2",
-               downloadButton("download_script", "Reproduce in R", class = "btn-outline-success btn-sm"),
-               downloadButton("download_all", "Download all", class = "btn-success btn-sm")))
+               downloadButton("download_script", "Reproduce in R", class = "btn-outline-primary btn-sm"),
+               downloadButton("download_all", "Download all", class = "btn-primary btn-sm")))
 )
 
 # ======================================================================================================
@@ -934,7 +1003,7 @@ server <- function(input, output, session) {
     plot_sim_tree(tree_sim(), layout = tree_layout(), show_tips = input$tree_tips, show_axis = input$tree_axis,
                   tip_size = if (tips_in_rows()) 3 else 2, max_tip_labels = MAX_TIP_LABELS)
   }, height = function() {
-    if (tips_in_rows()) max(650, 15 * n_tips_tree()) else if (tree_layout() %in% c("circular", "equal_angle")) 800 else 650
+    if (tips_in_rows()) max(600, 15 * n_tips_tree()) else if (tree_layout() %in% c("circular", "equal_angle")) 720 else 600
   })
 
   output$tree_info <- renderText({
@@ -1024,7 +1093,7 @@ server <- function(input, output, session) {
       need(all(rates >= 0) && sum(rates) > 0, "The exchangeabilities must be non-negative and not all zero."),
       need(all(pi_raw > 0), "The nucleotide frequencies must be positive."),
       need(input$snv_epsilon >= 0 && input$snv_epsilon <= 1 && input$snv_delta >= 0 && input$snv_delta <= 1,
-           "epsilon and delta must be probabilities.")
+           "ε and δ must be probabilities.")
     )
     clock <- snv_clock()
     code <- snv_code(list(seed = input$snv_seed, clock = clock$code, n_sites = n_sites, rates = rates, pi_raw = pi_raw,
@@ -1037,13 +1106,17 @@ server <- function(input, output, session) {
     })
   })
 
+  output$snv_card_title <- renderText({
+    if (isTRUE(input$snv_genotypes)) "Genotypes of the cells (one row per cell; one tile per site: hue = nucleotide of allele 1, shade = nucleotide of allele 2)"
+    else "Genotypes of the cells (one row per cell; two tiles per site: allele 1 left, allele 2 right)"
+  })
   output$snv_note <- subsample_notice(tree_sim)
   output$snv_plot <- renderPlot({
     need_press("sim_snv", "Press 'Simulate mutations' to simulate SNVs on the tree.")
     s <- snv_sim()
     plot_sim_snv(s$tree, s$snv, errors = isTRUE(input$snv_errors), distance = isTRUE(input$snv_distance),
                  genotypes = isTRUE(input$snv_genotypes))
-  }, height = layer_plot_height(tree_sim, per_tip = 12))
+  }, height = layer_plot_height(tree_sim, per_tip = 7))
 
   output$snv_summary <- renderText({ need_press("sim_snv", ""); format(summarize_snv(snv_sim()$tree, snv_sim()$snv)) })
   layer_download("download_snv", "sim_snv_", function() layer_ready("sim_snv"), snv_sim, "press 'Simulate mutations' first.")
@@ -1061,9 +1134,9 @@ server <- function(input, output, session) {
       need(!custom || nchar(custom_seq) <= MAX_CUSTOM_SITES, sprintf("The sequence at the origin can have at most %s sites.", format(MAX_CUSTOM_SITES, big.mark = ","))),
       need(!anyNA(c(n_sites, input$bin_n_sequences, input$bin_lambda, input$bin_alpha, input$bin_beta, input$bin_seed)),
            "All binary trait parameters must be filled in."),
-      need(input$bin_lambda > 0, "lambda must be positive."),
+      need(input$bin_lambda > 0, "λ must be positive."),
       need(input$bin_alpha >= 0 && input$bin_alpha <= 1 && input$bin_beta >= 0 && input$bin_beta <= 1,
-           "alpha and beta must be probabilities.")
+           "α and β must be probabilities.")
     )
     clock <- bin_clock()
     # the true sequence can only be recovered for one sequence: with several, the error draws of one sequence shift the
@@ -1084,7 +1157,7 @@ server <- function(input, output, session) {
     need_press("sim_bin", "Press 'Simulate binary trait' to simulate binary sites on the tree.")
     s <- bin_sim()
     plot_sim_binary(s$tree, s$bin, errors = if (isTRUE(input$bin_errors)) s$true, distance = isTRUE(input$bin_distance))
-  }, height = layer_plot_height(tree_sim, per_tip = 8))
+  }, height = layer_plot_height(tree_sim, per_tip = 6))
 
   output$bin_summary <- renderText({ need_press("sim_bin", ""); { b <- bin_sim(); format(summarize_binary(b$tree, b$bin, b$true)) } })
   layer_download("download_bin", "sim_binary_trait_", function() layer_ready("sim_bin"), bin_sim, "press 'Simulate binary trait' first.")
@@ -1144,7 +1217,7 @@ server <- function(input, output, session) {
     need_press("sim_bc", "Press 'Simulate barcodes' to simulate barcodes on the tree.")
     s <- bc_sim()
     plot_sim_barcodes(s$tree, s$bc, n_edits = s$n_edits, missing_state = s$missing_state)
-  }, height = layer_plot_height(tree_sim, per_tip = 8))
+  }, height = layer_plot_height(tree_sim, per_tip = 6))
 
   output$bc_summary <- renderText({ need_press("sim_bc", ""); { b <- bc_sim(); format(summarize_barcodes(b$tree, b$bc, b$missing_state)) } })
   layer_download("download_bc", "sim_barcodes_", function() layer_ready("sim_bc"), bc_sim, "press 'Simulate barcodes' first.")
@@ -1161,7 +1234,7 @@ server <- function(input, output, session) {
   output$prior_preview <- renderPlot({
     set.seed(1)
     pr <- expr_priors()
-    p <- tryCatch(plot_prior_draws(lapply(pr, function(p) rsim_prior(5000, p))),
+    p <- tryCatch(plot_prior_draws(lapply(pr, function(p) rsim_prior(5000, p)), priors = pr),
                   error = function(e) conditionMessage(e))
     validate(need(!is.character(p), if (is.character(p)) p else ""))
     p
@@ -1172,8 +1245,8 @@ server <- function(input, output, session) {
   output$expr_table_help <- renderUI({
     theta <- paste(paste0("theta_", seq_len(n_types_tree()) - 1L), collapse = ", ")
     helpText("One row per gene; the number of rows is the number of genes. Columns: ", code("alpha"),
-             " (reversion strength; 0 is a Brownian motion), ", code("sigma2"), " (diffusion, > 0), ", code(theta),
-             " (optimum of each type, log scale; can be empty for Brownian motions), and optionally ", code("gene"),
+             " (α, the strength of the reversion; 0 is a Brownian motion), ", code("sigma2"), " (σ², the diffusion, > 0), ", code(theta),
+             " (the optimum θ of each type, log scale; can be empty for Brownian motions), and optionally ", code("gene"),
              " (names) and ", code("root_value"), " (default: the optimum of the type of the root for OU genes, 0 for Brownian motions).")
   })
   output$expr_template <- downloadHandler(
@@ -1223,15 +1296,15 @@ server <- function(input, output, session) {
   })
 
   expr_params_plots <- reactive({
-    need_press("sim_expr", "Press 'Simulate expression' to simulate the expression of the genes on the tree.")
+    need_press("sim_expr", "Press 'Simulate latent expression' to simulate the latent expression of the genes on the tree.")
     plot_sim_params(expr_sim()$truth)
   })
   # underlying expression of every gene (columns, grouped by class) in every cell (rows, aligned with the tips of the tree)
   output$expr_heatmap <- renderPlot({
-    need_press("sim_expr", "Press 'Simulate expression' to simulate the expression of the genes on the tree.")
+    need_press("sim_expr", "Press 'Simulate latent expression' to simulate the latent expression of the genes on the tree.")
     es <- expr_sim()
     plot_sim_expression(es$expr, es$tree, es$truth)
-  }, height = layer_plot_height(function() expr_sim()$tree, per_tip = 8))
+  }, height = layer_plot_height(function() expr_sim()$tree, per_tip = 6))
   output$expr_note <- subsample_notice(function() expr_sim()$tree)
   output$oum_params_plot <- renderPlot({ expr_params_plots()$oumparams })
   output$thetas_plot     <- renderPlot({
@@ -1243,25 +1316,25 @@ server <- function(input, output, session) {
 
   # UMAP of the cells from their latent expression, coloured by cell type (the seed of the plot function is its default)
   output$expr_umap <- renderPlot({
-    need_press("sim_expr", "Press 'Simulate expression' to simulate the expression of the genes on the tree.")
+    need_press("sim_expr", "Press 'Simulate latent expression' to simulate the latent expression of the genes on the tree.")
     es <- expr_sim()
     withProgress(message = "Computing the UMAP...", value = 0.5,
                  plot_sim_umap(es$expr, es$tree, tips_only = !identical(input$umap_tips_only, FALSE)))
   })
 
   output$expr_summary <- renderText({
-    need_press("sim_expr", "Press 'Simulate expression' to simulate the expression of the genes on the tree.")
+    need_press("sim_expr", "Press 'Simulate latent expression' to simulate the latent expression of the genes on the tree.")
     es <- expr_sim()
     format(summarize_expression(es$expr, es$tree, es$truth))
   })
-  layer_download("download_expr", "sim_expression_", function() layer_ready("sim_expr"), expr_sim, "press 'Simulate expression' first.")
+  layer_download("download_expr", "sim_expression_", function() layer_ready("sim_expr"), expr_sim, "press 'Simulate latent expression' first.")
   # the true parameters of every gene: drawn from the priors or read from the table (plus the derived classes)
   csv_download("download_expr_truth", "sim_expression_true_parameters_", function() layer_ready("sim_expr"),
-               function() expr_sim()$truth, "press 'Simulate expression' first.")
+               function() expr_sim()$truth, "press 'Simulate latent expression' first.")
 
   # ---- Counts ------------------------------------------------------------------------------------
   counts_sim <- eventReactive(input$sim_counts, {
-    need_press("sim_expr", "Simulate the expression first (sub-tab 'Simulate expression'): the counts are simulated from it.")
+    need_press("sim_expr", "Simulate the latent expression first (sub-tab 'Simulate latent expression'): the counts are simulated from it.")
     es <- expr_sim()
     validate(
       need(!anyNA(c(input$counts_seed, input$cell_size_sd)), "All count parameters must be filled in.")
@@ -1284,8 +1357,8 @@ server <- function(input, output, session) {
   })
 
   need_counts <- function() {
-    need_press("sim_expr", "Simulate the expression first (sub-tab 'Simulate expression'): the counts are simulated from it.")
-    need_press("sim_counts", "Press 'Simulate counts' to simulate the counts at the tips from the expression.")
+    need_press("sim_expr", "Simulate the latent expression first (sub-tab 'Simulate latent expression'): the counts are simulated from it.")
+    need_press("sim_counts", "Press 'Simulate counts' to simulate the counts at the tips from the latent expression.")
   }
 
   output$counts_plots <- renderPlot({
@@ -1298,7 +1371,6 @@ server <- function(input, output, session) {
     plot_sim_sizes_panel(plots())
   })
 
-  output$lowcounts_plot <- renderPlot({ need_counts(); plots()$lowcounts })
 
   output$sim_summary <- renderText({ need_counts(); { cs <- counts_sim(); format(summarize_counts(cs$counts, cs$truth, cs$cell_size, cs$shift)) } })
 

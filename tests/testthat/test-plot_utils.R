@@ -67,6 +67,34 @@ test_that("plot_prior_draws returns a faceted histogram and validates its input"
   expect_error(plot_prior_draws(list(a = "x")), "named list")
 })
 
+test_that("plot_prior_draws marks the mean of the draws and the bounds of the priors", {
+  skip_if_not_installed("ggplot2")
+  priors <- list(alpha = sim_prior("exponential", rate = 1, lower = 0.1),
+                 sigma2 = sim_prior("uniform", min = 0, max = 2, lower = 0.5, upper = 1.5))
+  set.seed(1)
+  draws <- lapply(priors, function(p) rsim_prior(500, p))
+  lines_of <- function(p) Filter(function(l) inherits(l$geom, "GeomVline"), p$layers)[[1]]$data
+  with_priors <- plot_prior_draws(draws, priors)
+  expect_no_error(ggplot2::ggplot_build(with_priors))
+  lines <- lines_of(with_priors)
+  expect_equal(lines$x[lines$what == "mean"], unname(vapply(draws, mean, numeric(1))))
+  expect_equal(lines$x[lines$what == "lower bound"], c(0.1, 0.5))   # one finite lower bound per parameter
+  expect_equal(lines$x[lines$what == "upper bound"], 1.5)           # only sigma2 has an upper bound
+  expect_equal(levels(with_priors$data$parameter), c("alpha", "sigma2"))
+  # without the priors, only the mean
+  no_priors <- lines_of(plot_prior_draws(draws))
+  expect_equal(as.character(unique(no_priors$what)), "mean")
+  expect_error(plot_prior_draws(draws, list(alpha = priors$alpha)), "sim_prior")
+  expect_error(plot_prior_draws(draws, list(alpha = 1, sigma2 = 2)), "sim_prior")
+})
+
+test_that("the colours of the model classes are fixed and distinct", {
+  cols <- .model_colours()
+  expect_named(cols, c("BM", "OU1", "OUM"))
+  expect_length(unique(cols), 3)
+  expect_true(all(grepl("^#[0-9A-Fa-f]{6}$", cols)))
+})
+
 test_that("plot_sim_results returns all the plots, and they can be built", {
   skip_if_not_installed("ggpubr")
   skip_if_not_installed("viridis")
@@ -97,6 +125,12 @@ test_that("the combined panels are arranged figures", {
   plots <- plot_sim_results(make_sim())
   expect_s3_class(plot_sim_counts_panel(plots), "ggplot")
   expect_s3_class(plot_sim_sizes_panel(plots), "ggplot")
+  # the size panel has the plot of the genes with few counts too, and draws
+  panel <- plot_sim_sizes_panel(plots)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off())
+  expect_no_error(print(panel))
+  expect_match(plots$lowcounts$labels$x, "< 20 counts")
 })
 
 test_that(".require_pkgs names the missing packages", {
@@ -422,7 +456,7 @@ test_that("plot_sim_params also draws the optima of the types, and the counts ma
   genes <- sim_gene_params(tree, n_genes = 40, pi_ou = 0.8)
   p <- plot_sim_params(genes)
   expect_named(p, c("oumparams", "modelclass", "thetas"))
-  expect_equal(levels(p$thetas$data$type), paste("type", 0:2))
+  expect_equal(levels(p$thetas$data$type), paste("Type", 0:2))
   expect_true(all(p$thetas$data$class_eff != "BM"))
   expect_no_error(ggplot2::ggplot_build(p$thetas))
   expect_named(plot_sim_params(make_sim()$truth), c("oumparams", "modelclass"))   # no optima in the table
@@ -478,4 +512,75 @@ test_that("plot_sim_umap can include the internal nodes and the extinct tips, ma
   internal <- all_nodes$data[all_nodes$data$kind == "internal node", ]
   ids <- as.integer(sub("node_", "", internal$cell))
   expect_equal(as.character(internal$type), as.character(tree@data$type[match(ids, tree@data$node)]))
+})
+
+test_that("the heatmap of the layers keeps a share of the plot however many sites there are", {
+  skip_if_not_installed("ggtree")
+  tree <- make_tree3(30)
+  ct <- clock_tree(tree, clock_strict(0.1))
+  heat_width <- function(p) {
+    tiles <- Filter(function(l) inherits(l$geom, "GeomTile"), p$layers)[[1]]$data
+    diff(range(tiles$x)) / diff(range(p$data$x))
+  }
+  many <- sim_gt16_nt_diploid(ct, n_sites = 300, clock = NULL)
+  few <- sim_gt16_nt_diploid(ct, n_sites = 10, clock = NULL)
+  expect_lte(heat_width(plot_sim_snv(ct, many)), 1.02)
+  expect_lte(heat_width(plot_sim_snv(ct, many, max_heat_width = 0.5)), 0.51)
+  # few sites keep the width per site: the centres of 10 sites of 0.015 of the tree (two tiles each) span 9.5 sites
+  expect_equal(heat_width(plot_sim_snv(ct, few)), 0.015 * 9.5, tolerance = 0.02)
+  # the binary trait and the barcodes cap their width too
+  bin <- sim_binary(ct, n_sites = 600, clock = NULL)
+  pb <- ggplot2::ggplot_build(plot_sim_binary(ct, bin, max_heat_width = 0.6))
+  expect_no_error(pb)
+  bc <- sim_barcode_seq(tree, n_barcodes = 2, n_sites = 30, edit_rate = 1, edit_probs = c(0.5, 0.5))
+  expect_no_error(ggplot2::ggplot_build(plot_sim_barcodes(tree, bc, n_edits = 2, max_heat_width = 0.4)))
+})
+
+# ---- consistent titles: capitals, and Greek letters for the parameters ----
+
+test_that("the names of the parameters are written as plotmath, and the other names are quoted", {
+  expect_equal(.param_math(c("alpha", "sigma2", "eta", "phi", "psi_0", "psi1", "theta_12", "other")),
+               c("alpha", "sigma^2", "eta", "phi", "psi[0]", "psi[1]", "theta[12]", "\"other\""))
+  expect_equal(.cap(c("sampled tip", "edit 1", "A")), c("Sampled tip", "Edit 1", "A"))
+  # every label can be parsed
+  expect_no_error(lapply(.param_math(c("alpha", "sigma2", "psi_3", "theta_0", "x y")), function(x) parse(text = x)))
+})
+
+test_that("the strips and the legends of the plots use Greek letters and start with a capital", {
+  skip_if_not_installed("ggplot2")
+  skip_if_not(exists("get_strip_labels", asNamespace("ggplot2")), "needs a newer ggplot2")
+  tree <- make_tree3(30)
+  set.seed(1)
+  genes <- sim_gene_params(tree, n_genes = 40, pi_ou = 0.8)
+  p <- plot_sim_params(genes)
+  expect_equal(levels(p$oumparams$data$label),
+               c("alpha", "sigma^2", "eta", "psi[0]", "psi[1]"))   # plotmath: two shares for three types
+  expect_equal(as.character(ggplot2::get_strip_labels(p$thetas)$facets$type), c("Type 0", "Type 1", "Type 2"))
+  expect_match(paste(deparse(p$thetas$labels$x), collapse = ""), "theta")   # an expression with the letter
+  expect_equal(p$modelclass$labels$x, "Model class")
+
+  priors <- list(alpha = sim_prior("exponential", rate = 1, lower = 0.1),
+                 sigma2 = sim_prior("exponential", rate = 1, upper = 2))
+  set.seed(2)
+  pp <- plot_prior_draws(lapply(priors, function(x) rsim_prior(200, x)), priors)
+  expect_match(levels(pp$data$title), "^(alpha|sigma\\^2) ~ \"\\(mean ")
+  expect_equal(as.character(ggplot2::get_guide_data(pp, "colour")$.label), c("Mean", "Lower bound", "Upper bound"))
+
+  skip_if_not_installed("ggtree")
+  ct <- clock_tree(tree, clock_strict(0.1))
+  snv <- sim_gt16_nt_diploid(ct, n_sites = 5, clock = NULL, epsilon = 0.2, delta = 0.2)
+  ps <- plot_sim_snv(ct, snv, errors = TRUE)
+  expect_equal(as.character(ggplot2::get_guide_data(ps, "shape")$.label),
+               c("One allele", "Heterozygous to homozygous", "Both alleles"))
+  expect_equal(ps$labels$x, "Time before present")
+  expect_match(ggplot2::get_labs(plot_sim_snv(ct, snv, genotypes = TRUE, errors = TRUE))$caption, "^Points: ")
+  bin <- sim_binary(ct, n_sites = 8, clock = NULL, alpha = 0.2, beta = 0.2)
+  true <- sim_binary(ct, n_sites = 8, clock = NULL)
+  pb <- plot_sim_binary(ct, bin, errors = true)
+  labels <- as.character(ggplot2::get_guide_data(pb, "fill")$.label)
+  expect_true(all(labels %in% c("0", "1", "False positive", "False negative")))
+  bc <- sim_barcode_seq(tree, n_barcodes = 1, n_sites = 4, edit_rate = 1, edit_probs = c(0.5, 0.5))
+  pc <- plot_sim_barcodes(tree, bc, n_edits = 2)
+  expect_true(all(grepl("^[A-Z]", as.character(ggplot2::get_guide_data(pc, "fill")$.label))))
+  expect_equal(ggplot2::get_labs(plot_sim_tree(tree))$colour, "Type")
 })

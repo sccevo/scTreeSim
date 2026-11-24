@@ -175,6 +175,17 @@ test_that("a custom sequence at the origin is used by the mutations and by the b
   })
 })
 
+test_that("the title of the genotypes card says how the genotypes are drawn", {
+  skip_if_no_app()
+  shiny::testServer(shiny::shinyAppFile(app_file()), {
+    session$setInputs(snv_genotypes = FALSE)
+    expect_match(output$snv_card_title, "two tiles per site: allele 1 left, allele 2 right")
+    session$setInputs(snv_genotypes = TRUE)
+    expect_match(output$snv_card_title, "one tile per site")
+    expect_false(grepl("two tiles", output$snv_card_title))
+  })
+})
+
 test_that("a new tree sends the layers back to the state in which nothing has been simulated", {
   skip_if_no_app()
   skip_on_cran()

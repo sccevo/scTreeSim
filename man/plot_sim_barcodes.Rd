@@ -12,7 +12,8 @@ plot_sim_barcodes(
   gap = 2,
   site_width = 0.025,
   max_cells = 500,
-  seed = 1
+  seed = 1,
+  max_heat_width = 1
 )
 }
 \arguments{
@@ -38,6 +39,9 @@ not depend on which outcomes happen to occur}
 
 \item{seed}{seed of the random subsample (the random number generator of the session is restored
 afterwards)}
+
+\item{max_heat_width}{largest width of the heatmap as a fraction of the width of the tree: with many
+sites, they are drawn narrower so that the tree keeps its share of the plot}
 }
 \value{
 a ggplot object

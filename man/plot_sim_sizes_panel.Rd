@@ -13,6 +13,7 @@ plot_sim_sizes_panel(plots)
 a ggplot object (arranged figure)
 }
 \description{
-Arranges the simulated versus realised gene and cell sizes from
-\code{\link{plot_sim_results}} side by side.
+Arranges in one row the simulated versus realised gene and cell sizes and the
+histogram of the genes with few counts from \code{\link{plot_sim_results}}, with
+one legend of the model classes.
 }

@@ -30,7 +30,6 @@ Suggests:
     patchwork,
     phangorn,
     rmarkdown,
-    scico,
     shiny,
     testthat (>= 3.0.0),
     uwot,
