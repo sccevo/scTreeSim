@@ -33,14 +33,15 @@ set_layers <- function(session) {
                     "bin_clock-spike_mean" = 0.05, "bin_clock-spike_fixed" = FALSE, "bin_clock-spike_shape" = 2,
                     bin_seed = 3, bin_n_sites = 15, bin_n_sequences = 1, bin_lambda = 1, bin_origin = "random",
                     bin_alpha = 0.1, bin_beta = 0.1)
-  session$setInputs(bc_seed = 4, bc_model = "generic", bc_edit_probs = "0.5, 0.3, 0.2", bc_edit_rate = 1,
+  session$setInputs(bc_seed = 4, bc_model = "generic", bc_probs_source = "fixed", bc_edit_probs = "0.5, 0.3, 0.2", bc_edit_rate = 1,
                     bc_silencing_rate = 0.01, bc_dropout_prob = 0.05, bc_n_barcodes = 2, bc_n_sites = 4,
                     bc_sequential = TRUE, bc_profile = "decay", bc_half_life = 1, bc_by_type = TRUE)
   session$setInputs(expr_seed = 1, expr_source = "priors", gap_cutoff = 1, n_gene = 12, pi_ou = 0.6,
-                    ou_alpha_threshold = 0.1, sigma2_max = 2, psi_concentration = 0.5, mean_count_gene = 1, log_g_sd = 1.5,
-                    "alpha_prior-type" = "Exponential", "alpha_prior-p1" = 1, "sigma2_prior-type" = "Exponential",
-                    "sigma2_prior-p1" = 1, "eta_prior-type" = "Exponential", "eta_prior-p1" = 1,
-                    "phi_prior-type" = "Lognormal", "phi_prior-p1" = -2, "phi_prior-p2" = 2)
+                    psi_concentration = 0.5, mean_count_gene = 1, log_g_sd = 1.5,
+                    "alpha_prior-type" = "Exponential", "alpha_prior-p1" = 1, "alpha_prior-lower" = 0.1, "alpha_prior-upper" = NA,
+                    "sigma2_prior-type" = "Exponential", "sigma2_prior-p1" = 1, "sigma2_prior-lower" = 1e-8, "sigma2_prior-upper" = 2,
+                    "eta_prior-type" = "Exponential", "eta_prior-p1" = 1, "eta_prior-lower" = 0, "eta_prior-upper" = NA,
+                    "phi_prior-type" = "Lognormal", "phi_prior-p1" = -2, "phi_prior-p2" = 2, "phi_prior-lower" = 1e-8, "phi_prior-upper" = NA)
   session$setInputs(counts_seed = 5, cell_size_sd = 0.9, use_target = TRUE, target_mean_count = 1, phi_mode = "prior")
 }
 
@@ -77,6 +78,8 @@ test_that("the script of the app reproduces what it showed, with any number of t
     expect_match(script, "sim_adb_ntaxa_samp", fixed = TRUE)
     # the parameters of the genes are drawn in the script, not saved in it
     expect_match(script, "sim_gene_params(tree, n_genes = 12", fixed = TRUE)
+    expect_match(script, 'alpha = sim_prior("exponential", rate = 1, lower = 0.1)', fixed = TRUE)
+    expect_match(script, 'sigma2 = sim_prior("exponential", rate = 1, lower = 1e-08, upper = 2)', fixed = TRUE)
     expect_match(script, "sim_count_params(expr, tree, gene_params", fixed = TRUE)
     expect_lt(nchar(script), 6000)
 
@@ -99,6 +102,11 @@ test_that("the app simulates a tree at a fixed time and reads the parameters of 
     tr <- tree_sim()
     expect_match(tree_run()$code, "sim_adb_origin_samp(\n  origin_time = 4", fixed = TRUE)
     set_layers(session)
+    session$setInputs(bc_probs_source = "prior", bc_n_outcomes = 4, bc_probs_concentration = 0.5, sim_bc = 1)
+    bc <- bc_sim()
+    expect_length(bc$edit_probs, 4)
+    expect_equal(sum(bc$edit_probs), 1)
+    expect_match(bc$code, "sim_dirichlet(4, concentration = 0.5)", fixed = TRUE)
     session$setInputs(expr_source = "table", expr_table = list(datapath = path, name = "genes.csv"), sim_expr = 1)
     es <- expr_sim()
     expect_equal(es$truth$gene, c("a", "b", "c"))
@@ -109,6 +117,23 @@ test_that("the app simulates a tree at a fixed time and reads the parameters of 
     env <- new.env()
     eval(parse(text = script_text()), env)
     expect_identical(env$expr, es$expr)
+    expect_identical(env$bc, bc_sim()$bc)
+    expect_identical(env$edit_probs, bc$edit_probs)
+  })
+})
+
+test_that("nothing is simulated until the user asks for a tree, and cells x genes is limited", {
+  skip_if_no_app()
+  shiny::testServer(shiny::shinyAppFile(app_file()), {
+    expect_error(tree_run(), class = "shiny.silent.error")   # no tree at the start
+    set_tree(session, n_types = 2)
+    expect_s4_class(tree_sim(), "treedata")
+    set_layers(session)
+    session$setInputs(n_gene = 1e6, sim_expr = 1)
+    expect_error(expr_sim(), class = "shiny.silent.error")   # 25 cells x 1,000,000 genes is too much
+    # more tips than the limit
+    session$setInputs(tree_stop = "ntaxa", n_tips = 20000, sim_tree = 2)
+    expect_error(tree_run(), class = "shiny.silent.error")
   })
 })
 
