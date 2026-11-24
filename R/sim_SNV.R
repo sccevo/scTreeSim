@@ -94,58 +94,48 @@ sim_gt16_nt_diploid <- function(tree, n_sites = NULL, rates = rep(1, 6), pi = NU
 
   # edges in cladewise order, so a parent is always evolved before its
   # children; sorting nodes on height does not guarantee that, because a
-  # zero-length edge leaves parent and child tied
+  # zero-length edge leaves parent and child tied. The root edge comes first,
+  # from the origin (parent 0), over distance 0 if the tree has none
   edges <- ape::reorder.phylo(tree@phylo, "cladewise")$edge
   n_tips <- ape::Ntip(tree@phylo)
-  root <- n_tips + 1
+  root <- n_tips + 1L
   nodes <- tibble::as_tibble(tree)$node
 
-  # node x site matrix of GT16 states; the origin genotype evolves along the
-  # root edge (distance 0 without one), then every branch over the child's distance
   origin_state <- if (is.null(root_state)) {
     sample.int(length(.gt16_states), n_sites, replace = TRUE, prob = pi)
   } else {
     root_state
   }
-  states <- matrix(NA_integer_, length(d), n_sites)
-  states[root, ] <- .evolve_branch_gt16(origin_state, d[root], events)
-  for (i in seq_len(nrow(edges))) {
-    states[edges[i, 2], ] <- .evolve_branch_gt16(states[edges[i, 1], ], d[edges[i, 2]], events)
-  }
+  # sites x nodes raw matrix of GT16 states (see src/sim_gt16.cpp)
+  states <- sim_gt16_cpp(c(0L, edges[, 1]), c(root, edges[, 2]), d, as.integer(origin_state),
+                         events$dest, events$cumulative)
 
   # sequencing is a measurement effect at the tips, so the observed genotypes
-  # are a separate copy derived from the finished true genotypes
-  observed <- states
+  # are a separate copy derived from the finished true genotypes; internal
+  # nodes share the strings of the true genotypes
+  true <- .gt16_format(states, nodes, format)
+  observed <- true
   if (epsilon > 0 || delta > 0) {
     tips <- seq_len(n_tips)
-    observed[tips, ] <- .add_error_gt16(states[tips, , drop = FALSE], .gt16_error_matrix(epsilon, delta))
+    tip_rows <- match(tips, nodes)
+    # every observed genotype is drawn from its true genotype's row of the error matrix
+    tip_states <- add_error_gt16_cpp(states, tips, .gt16_error_matrix(epsilon, delta))
+    tip_strings <- .gt16_format(tip_states, tips, format)
+    for (col in names(observed)[-1]) observed[[col]][tip_rows] <- tip_strings[[col]]
   }
 
-  list(true = .gt16_format(states[nodes, , drop = FALSE], nodes, format),
-       observed = .gt16_format(observed[nodes, , drop = FALSE], nodes, format))
+  list(true = true, observed = observed)
 }
 
 # One row per node, either as genotypes separated by "_" ("AG_AC") or as the two aligned allele
-# sequences ("AA" and "GC"), the form of `origin_seq`; `states` is a node x site matrix
+# sequences ("AA" and "GC"), the form of `origin_seq`; `states` is a sites x nodes raw matrix and
+# `nodes` the columns to format
 .gt16_format <- function(states, nodes, format) {
-  collapse_rows <- function(labels, sep) apply(matrix(labels, nrow(states)), 1, paste, collapse = sep)
+  strings <- gt16_format_cpp(states, as.integer(nodes), format == "genotype")
   if (format == "genotype") {
-    return(data.frame(node = nodes, genotype = collapse_rows(.gt16_states[states], "_"), row.names = NULL))
+    return(data.frame(node = nodes, genotype = strings[[1]], row.names = NULL))
   }
-  data.frame(node = nodes,
-             allele_1 = collapse_rows(.gt16_nucleotides[.gt16_allele1[states]], ""),
-             allele_2 = collapse_rows(.gt16_nucleotides[.gt16_allele2[states]], ""),
-             row.names = NULL)
-}
-
-# Observation error on true GT16 states (node x site matrix, each site independent): every
-# observed genotype is drawn from its true genotype's row of the error matrix
-.add_error_gt16 <- function(states, error_matrix) {
-  cumulative <- t(apply(error_matrix, 1, cumsum))
-  s <- as.vector(states)
-  u <- stats::runif(length(s)) * cumulative[s, ncol(cumulative)]
-  states[] <- rowSums(cumulative[s, , drop = FALSE] < u) + 1L
-  states
+  data.frame(node = nodes, allele_1 = strings[[1]], allele_2 = strings[[2]], row.names = NULL)
 }
 
 # accept either 16 genotype frequencies or 4 nucleotide frequencies, in which
@@ -249,35 +239,10 @@ sim_gt16_nt_diploid <- function(tree, n_sites = NULL, rates = rep(1, 6), pi = NU
        total = cumulative[, 6L])
 }
 
-# Gillespie simulation of the GT16 chain along one branch, run for all sites at
-# once: sites still "in flight" draw their next waiting time together, those
-# whose next event falls past the end of the branch drop out, and the rest take
-# one single-allele substitution and go round again. Sites that never have an
-# event simply inherit the parent genotype.
+# The GT16 chain along a single branch of length `branch_time` for the states `state` (one per site),
+# by the same engine as the tree (uniformization, see src/sim_gt16.cpp)
 .evolve_branch_gt16 <- function(state, branch_time, events) {
-  if (branch_time <= 0) return(state)
-
-  elapsed <- numeric(length(state))
-  active <- seq_along(state)
-
-  while (length(active) > 0) {
-    s <- state[active]
-    # a state with no outgoing rate gets an infinite waiting time and so simply
-    # drops out below
-    elapsed[active] <- elapsed[active] + stats::rexp(length(active), events$total[s])
-
-    fits <- elapsed[active] <= branch_time
-    active <- active[fits]
-    if (length(active) == 0) break
-
-    # which of the six events fired, with probability proportional to its rate
-    s <- s[fits]
-    u <- stats::runif(length(s)) * events$total[s]
-    k <- rowSums(events$cumulative[s, , drop = FALSE] < u) + 1L
-    state[active] <- events$dest[cbind(s, k)]
-  }
-
-  state
+  as.integer(sim_gt16_cpp(0L, 1L, max(branch_time, 0), as.integer(state), events$dest, events$cumulative))
 }
 
 # P(observed | true) for the GT16 error model of Chen et al. (2022), eq. (2),

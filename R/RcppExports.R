@@ -9,3 +9,27 @@ sim_adb_origin_loop_cpp <- function(origin_time, scale, shape, death_prob, asym_
     .Call(`_scTreeSim_sim_adb_origin_loop_cpp`, origin_time, scale, shape, death_prob, asym_trans_prob, sym_trans_prob, origin_type)
 }
 
+sim_barcodes_cpp <- function(parent, child, tips, n_barcodes, n_sites, sequential, edit_base, edit_process, silencing_base, silencing_process, dropout_base, dropout_mult, edit_probs) {
+    .Call(`_scTreeSim_sim_barcodes_cpp`, parent, child, tips, n_barcodes, n_sites, sequential, edit_base, edit_process, silencing_base, silencing_process, dropout_base, dropout_mult, edit_probs)
+}
+
+sim_binary_cpp <- function(parent, child, distance, origin_state, lambda, n_tips, alpha, beta) {
+    .Call(`_scTreeSim_sim_binary_cpp`, parent, child, distance, origin_state, lambda, n_tips, alpha, beta)
+}
+
+binary_format_cpp <- function(states, columns, as_string) {
+    .Call(`_scTreeSim_binary_format_cpp`, states, columns, as_string)
+}
+
+sim_gt16_cpp <- function(parent, child, distance, origin_state, dest, cumulative) {
+    .Call(`_scTreeSim_sim_gt16_cpp`, parent, child, distance, origin_state, dest, cumulative)
+}
+
+add_error_gt16_cpp <- function(states, nodes, error_matrix) {
+    .Call(`_scTreeSim_add_error_gt16_cpp`, states, nodes, error_matrix)
+}
+
+gt16_format_cpp <- function(states, columns, genotype) {
+    .Call(`_scTreeSim_gt16_format_cpp`, states, columns, genotype)
+}
+
