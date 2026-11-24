@@ -30,6 +30,80 @@
   stats::setNames(cols, types)
 }
 
+# Run `expr` with a random seed and restore the state of the random number generator afterwards, so that the
+# plots do not change the random numbers of the user. With seed = NULL, `expr` just runs.
+.with_seed <- function(seed, expr) {
+  if (is.null(seed)) return(expr)
+  had_seed <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+  if (had_seed) old_seed <- get(".Random.seed", envir = globalenv(), inherits = FALSE)
+  on.exit({
+    if (had_seed) assign(".Random.seed", old_seed, envir = globalenv())
+    else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) rm(".Random.seed", envir = globalenv())
+  })
+  set.seed(seed)
+  expr
+}
+
+# The tree pruned to the tips `keep` (ids of tips, in increasing order). Every node keeps its own branch (the nodes
+# that are left with a single child are not collapsed), so the per-node columns of `tree@data` (type, status,
+# distance, ...) stay valid. The tips are numbered 1, ..., length(keep) in the same order, with the original labels.
+.prune_to_tips <- function(tree, keep) {
+  phy <- tree@phylo
+  n_tip <- ape::Ntip(phy)
+  n_node <- n_tip + phy$Nnode
+  parent <- integer(n_node)
+  parent[phy$edge[, 2]] <- phy$edge[, 1]
+  keep_node <- logical(n_node)
+  keep_node[keep] <- TRUE
+  frontier <- keep
+  while (length(frontier) > 0) {   # the ancestors of the kept tips
+    up <- unique(parent[frontier])
+    up <- up[up > 0]                  # the root has no parent
+    frontier <- up[!keep_node[up]]
+    keep_node[frontier] <- TRUE
+  }
+  internal <- which(keep_node & seq_len(n_node) > n_tip)
+  new_id <- integer(n_node)
+  new_id[keep] <- seq_along(keep)
+  new_id[internal] <- length(keep) + seq_along(internal)
+
+  in_tree <- keep_node[phy$edge[, 2]]
+  new_phy <- list(edge = cbind(new_id[phy$edge[in_tree, 1]], new_id[phy$edge[in_tree, 2]]),
+                  edge.length = phy$edge.length[in_tree], Nnode = length(internal), tip.label = phy$tip.label[keep])
+  if (!is.null(phy$root.edge)) new_phy$root.edge <- phy$root.edge
+  if (!is.null(phy$origin)) new_phy$origin <- phy$origin
+  class(new_phy) <- "phylo"
+  pruned <- treeio::as.treedata(new_phy)
+  data <- tree@data[tree@data$node %in% which(keep_node), , drop = FALSE]
+  data$node <- new_id[data$node]
+  pruned@data <- tibble::as_tibble(data[order(data$node), , drop = FALSE])
+  pruned
+}
+
+# For the plots with one row per cell: with more than `max_cells` cells, a random subsample of `max_cells` cells
+# (tips) and the tree pruned to them. `keep` is NULL when nothing is subsampled.
+.subsample_cells <- function(tree, max_cells, seed) {
+  n_tip <- ape::Ntip(tree@phylo)
+  if (is.null(max_cells) || n_tip <= max_cells) return(list(tree = tree, keep = NULL, n_total = n_tip, n_shown = n_tip))
+  keep <- sort(.with_seed(seed, sample.int(n_tip, max_cells)))
+  list(tree = .prune_to_tips(tree, keep), keep = keep, n_total = n_tip, n_shown = max_cells)
+}
+
+# a table with a `node` column, restricted to the kept tips and renumbered as in the pruned tree
+.rekey_cells <- function(df, keep) {
+  if (is.null(keep) || is.null(df)) return(df)
+  df <- df[df$node %in% keep, , drop = FALSE]
+  df$node <- match(df$node, keep)
+  df
+}
+
+# the warning that goes in the plots of a subsample
+.subsample_note <- function(sub) {
+  if (is.null(sub$keep)) return(NULL)
+  sprintf("Random subsample of %d of %d cells (the tree is pruned to them)", sub$n_shown, sub$n_total)
+}
+.add_note <- function(p, note) if (is.null(note)) p else p + ggplot2::labs(caption = note)
+
 #' Plot a simulated tree coloured by type
 #'
 #' The type of a branch is the type of its child node.
@@ -37,18 +111,28 @@
 #' @param tree a treedata object with a \code{type} column in \code{tree@data},
 #'   e.g. from \code{\link{sim_adb_ntaxa_samp}}
 #' @param layout tree layout, passed to \code{ggtree::ggtree()}
-#'   (e.g. "rectangular", "slanted", "circular", "equal_angle")
-#' @param show_tips if TRUE, label the tips
+#'   (e.g. "rectangular", "slanted", "circular", "equal_angle"), or \code{"auto"}
+#'   (default): rectangular, and circular for trees with more than
+#'   \code{max_tips_rectangular} tips
+#' @param show_tips if TRUE, label the tips (not with more than \code{max_tip_labels}
+#'   tips: the labels would not be readable)
 #' @param tip_size size of the tip labels (in mm); with many tips, use a small
 #'   size or a tall figure so that the labels do not overlap
 #' @param show_axis if TRUE, add a time axis (rectangular and slanted layouts only)
+#' @param max_tip_labels largest number of tips that are labelled
+#' @param max_tips_rectangular largest number of tips of a tree that \code{layout = "auto"}
+#'   draws as a rectangular tree
 #'
 #' @return a ggplot object
 #' @export
-plot_sim_tree <- function(tree, layout = "rectangular", show_tips = FALSE, show_axis = TRUE,
-                          tip_size = 2.5) {
+plot_sim_tree <- function(tree, layout = "auto", show_tips = FALSE, show_axis = TRUE,
+                          tip_size = 2.5, max_tip_labels = 300, max_tips_rectangular = 1000) {
   .require_pkgs(c("ggplot2", "ggtree"))
   stopifnot(methods::is(tree, "treedata"))
+  n_tips <- ape::Ntip(tree@phylo)
+  if (layout == "auto") layout <- if (n_tips > max_tips_rectangular) "circular" else "rectangular"
+  hidden_labels <- show_tips && n_tips > max_tip_labels
+  if (hidden_labels) show_tips <- FALSE
 
   types <- levels(factor(tree@data$type))
   cols <- .type_colours(types)
@@ -61,6 +145,9 @@ plot_sim_tree <- function(tree, layout = "rectangular", show_tips = FALSE, show_
   }
   if (show_axis && layout %in% c("rectangular", "slanted")) {
     p <- p + ggtree::theme_tree2() + ggplot2::theme(legend.position = "top")
+  }
+  if (hidden_labels) {
+    p <- p + ggplot2::labs(caption = sprintf("The tip labels are not shown: there are %d tips (more than %d)", n_tips, max_tip_labels))
   }
   return(p)
 }
@@ -103,7 +190,9 @@ plot_prior_draws <- function(draws) {
 #'   \code{phi} and the proportions of the optima of the types (columns named \code{psi1}, or
 #'   \code{psi_0}, \code{psi_1}, ..., one per type but the last)
 #'
-#' @return a named list of two ggplot objects: \code{oumparams} and \code{modelclass}
+#' @return a named list of ggplot objects: \code{oumparams} and \code{modelclass}, and
+#'   \code{thetas} (histograms of the optima \code{theta_0}, \code{theta_1}, ... of the types,
+#'   one panel per type, for the OU genes) if the table has these columns
 #' @export
 plot_sim_params <- function(truth) {
   .require_pkgs("ggplot2")
@@ -142,7 +231,27 @@ plot_sim_params <- function(truth) {
                    legend.position = "top") +
     ggplot2::xlab("Value") + ggplot2::ylab("Number of genes")
 
-  return(list(oumparams = p_oumparams, modelclass = p_modelclasseffcount))
+  plots <- list(oumparams = p_oumparams, modelclass = p_modelclasseffcount)
+
+  # the optima of the types of the OU genes (theta_0, theta_1, ...), with the same scale in every type
+  theta_cols <- grep("^theta_[0-9]+$", names(truth), value = TRUE)
+  ou <- truth[truth$class != "BM", , drop = FALSE]
+  if (length(theta_cols) > 0 && nrow(ou) > 0) {
+    theta_cols <- theta_cols[order(as.integer(sub("theta_", "", theta_cols)))]
+    long_theta <- do.call(rbind, lapply(theta_cols, function(cn) {
+      data.frame(type = sub("theta_", "type ", cn), class_eff = ou$class_eff, value = ou[[cn]])
+    }))
+    long_theta$type <- factor(long_theta$type, levels = sub("theta_", "type ", theta_cols))
+    plots$thetas <- ggplot2::ggplot(long_theta, ggplot2::aes(x = .data$value, fill = .data$class_eff)) +
+      ggplot2::geom_histogram(bins = 40) +
+      ggplot2::facet_wrap(~type, nrow = 1) +
+      ggplot2::scale_fill_manual(values = model_names, name = "Model") +
+      ggplot2::theme(panel.background = ggplot2::element_blank(),
+                     strip.background = ggplot2::element_blank(),
+                     legend.position = "top") +
+      ggplot2::xlab("Optimum theta of the type (log scale; OU genes)") + ggplot2::ylab("Number of genes")
+  }
+  return(plots)
 }
 
 #' Tree with the simulated expression of the genes in the cells
@@ -165,9 +274,13 @@ plot_sim_params <- function(truth) {
 #'
 #' @return a ggplot object
 #' @export
-plot_sim_expression <- function(expr, tree, truth = NULL, max_genes = 200, gap = 2, heat_width = 0.8) {
+plot_sim_expression <- function(expr, tree, truth = NULL, max_genes = 200, gap = 2, heat_width = 0.8,
+                                max_cells = 500, seed = 1) {
   .require_pkgs(c("ggplot2", "ggtree"))
   stopifnot(methods::is(tree, "treedata"), is.data.frame(expr), all(c("node", "type") %in% names(expr)))
+  sub <- .subsample_cells(tree, max_cells, seed)
+  tree <- sub$tree
+  expr <- .rekey_cells(expr, sub$keep)
   gene_cols <- setdiff(names(expr), c("node", "type"))
   if (length(gene_cols) == 0) {
     stop("`expr` has no gene columns.", call. = FALSE)
@@ -224,14 +337,79 @@ plot_sim_expression <- function(expr, tree, truth = NULL, max_genes = 200, gap =
                        ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax, ymin = .data$ymin, ymax = .data$ymax),
                        fill = NA, color = "grey40", linewidth = 0.3, inherit.aes = FALSE) +
     ggplot2::scale_fill_viridis_c(name = "expression (log scale)") +
-    ggplot2::labs(caption = sprintf("Genes: %s%d (columns), cells: %d (rows, aligned with the tips)",
-                                    if (length(genes) < length(gene_cols)) "subset of " else "",
-                                    length(genes), nrow(m)))
+    ggplot2::labs(caption = paste(c(sprintf("Genes: %s%d (columns), cells: %d (rows, aligned with the tips)",
+                                            if (length(genes) < length(gene_cols)) "subset of " else "",
+                                            length(genes), nrow(m)), .subsample_note(sub)), collapse = "\n"))
   if (!is.null(truth)) {
     p <- p + ggplot2::annotate("text", x = (frames$xmin + frames$xmax) / 2, y = max(y) + 1,
                                label = names(groups), vjust = 0, size = 3, color = "grey30")
   }
   return(p)
+}
+
+#' UMAP of the cells, coloured by cell type
+#'
+#' Embeds the cells (the sampled tips of the tree) in two dimensions with UMAP
+#' (\code{uwot::umap}), from their latent expression simulated by
+#' \code{\link{sim_expression_matrix}}, and draws one point per cell, coloured by its
+#' cell type (the \code{type} of the tip in the tree). The embedding uses random numbers:
+#' the same \code{seed} gives the same plot, and the random number generator of the
+#' session is restored afterwards.
+#'
+#' @param expr the output of \code{\link{sim_expression_matrix}}: a data frame with the
+#'   columns \code{node}, \code{type} and one column per gene
+#' @param tree the treedata object the expression was simulated on; its sampled tips
+#'   (\code{status == 1}) are the cells
+#' @param n_neighbors number of neighbours of UMAP (at most the number of cells minus 1)
+#' @param n_pcs number of principal components that UMAP starts from; if there are
+#'   fewer genes, it uses the genes
+#' @param max_genes maximum number of genes used; if there are more, an evenly spaced
+#'   subset is used
+#' @param seed seed of the embedding
+#' @param point_size size of the points
+#'
+#' @return a ggplot object; its \code{data} has the coordinates (\code{UMAP1},
+#'   \code{UMAP2}), the \code{cell} and its \code{type}
+#' @examples
+#' \donttest{
+#' set.seed(1)
+#' tree <- sim_adb_ntaxa_samp(60, scale = c(0.2, 0.2), shape = c(5, 5), death_prob = c(0.05, 0.05),
+#'                            asym_trans_prob = matrix(c(0, 0, 0.2, 0), 2),
+#'                            sym_trans_prob = matrix(c(0.8, 0, 0, 1), 2), collapse = FALSE)
+#' genes <- sim_gene_params(tree, n_genes = 50, pi_ou = 1)
+#' expr <- sim_expression_matrix(tree, alpha = genes$alpha, sigmasq = genes$sigma2,
+#'                               root_value = genes$x_root, theta = gene_optima(genes),
+#'                               gene_names = genes$gene)
+#' if (requireNamespace("uwot", quietly = TRUE)) plot_sim_umap(expr, tree)
+#' }
+#' @export
+plot_sim_umap <- function(expr, tree, n_neighbors = 15, n_pcs = 50, max_genes = 2000, seed = 1, point_size = 1) {
+  .require_pkgs(c("ggplot2", "uwot"))
+  stopifnot(methods::is(tree, "treedata"), is.data.frame(expr), all(c("node", "type") %in% names(expr)))
+  gene_cols <- setdiff(names(expr), c("node", "type"))
+  tips <- tree@data$node[tree@data$status == 1]
+  if (length(gene_cols) < 2) stop("`expr` needs at least 2 genes for a UMAP.", call. = FALSE)
+  if (length(tips) < 3) stop("A UMAP needs at least 3 cells.", call. = FALSE)
+  if (!all(tips %in% expr$node)) stop("`expr` has no row for some tips of `tree`; was it simulated on this tree?", call. = FALSE)
+  genes <- if (length(gene_cols) > max_genes) {
+    gene_cols[unique(round(seq(1, length(gene_cols), length.out = max_genes)))]
+  } else {
+    gene_cols
+  }
+  m <- as.matrix(expr[match(tips, expr$node), genes, drop = FALSE])
+  rownames(m) <- tree@phylo$tip.label[tips]
+  coords <- .with_seed(seed, uwot::umap(m, n_neighbors = min(n_neighbors, nrow(m) - 1),
+                                        pca = if (ncol(m) > n_pcs) n_pcs else NULL, seed = seed, n_threads = 1))
+  type <- tree@data$type[match(tips, tree@data$node)]
+  df <- data.frame(UMAP1 = coords[, 1], UMAP2 = coords[, 2], cell = rownames(m),
+                   type = factor(type, levels = sort(unique(tree@data$type))))
+  ggplot2::ggplot(df, ggplot2::aes(x = .data$UMAP1, y = .data$UMAP2, color = .data$type)) +
+    ggplot2::geom_point(size = point_size) +
+    ggplot2::scale_color_manual(values = .type_colours(levels(df$type)), name = "cell type", drop = FALSE) +
+    ggplot2::labs(caption = sprintf("UMAP of %d cells from the expression of %s%d genes", nrow(m),
+                                    if (length(genes) < length(gene_cols)) "a subset of " else "", length(genes))) +
+    ggplot2::theme(panel.background = ggplot2::element_blank(), legend.position = "top",
+                   panel.border = ggplot2::element_rect(fill = NA, color = "grey60"))
 }
 
 #' Result plots of a simulation of expression and counts
@@ -257,13 +435,14 @@ plot_sim_expression <- function(expr, tree, truth = NULL, max_genes = 200, gap =
 #'   }
 #' @param max_genes_heatmap maximum number of genes shown in the counts matrix;
 #'   if there are more, an evenly spaced subset is shown
+#' @param max_cells_heatmap the same for the cells
 #'
 #' @return a named list of ggplot objects: \code{oumparams} and \code{modelclass}
 #'   (see \code{\link{plot_sim_params}}), \code{genesize}, \code{cellsize},
 #'   \code{countsmatrix}, \code{countspergene}, \code{countspercell},
 #'   \code{lowcounts}, \code{zeros_gene} and \code{zeros_cell}
 #' @export
-plot_sim_results <- function(sim, max_genes_heatmap = 300) {
+plot_sim_results <- function(sim, max_genes_heatmap = 300, max_cells_heatmap = 500) {
   .require_pkgs(c("ggplot2", "ggpubr", "viridis"))
 
   counts <- sim$counts
@@ -325,12 +504,17 @@ plot_sim_results <- function(sim, max_genes_heatmap = 300) {
   } else {
     seq_len(nrow(counts))
   }
-  hm <- as.data.frame(as.table(pmin(counts[genes_show, , drop = FALSE], 100)))
+  cells_show <- if (ncol(counts) > max_cells_heatmap) {
+    unique(round(seq(1, ncol(counts), length.out = max_cells_heatmap)))
+  } else {
+    seq_len(ncol(counts))
+  }
+  hm <- as.data.frame(as.table(pmin(counts[genes_show, cells_show, drop = FALSE], 100)))
   names(hm) <- c("gene", "cell", "counts")
   p_countsmatrix <- ggplot2::ggplot(hm, ggplot2::aes(x = .data$cell, y = .data$gene, fill = .data$counts)) +
     ggplot2::geom_raster() +
     viridis::scale_fill_viridis(option = "A", trans = "sqrt", name = "Counts (capped at 100)") +
-    ggplot2::xlab("Cells") +
+    ggplot2::xlab(if (length(cells_show) < ncol(counts)) sprintf("Cells (evenly spaced subset of %d)", length(cells_show)) else "Cells") +
     ggplot2::ylab(sprintf("Genes (subset of %d)", length(genes_show))) +
     ggplot2::theme(panel.background = ggplot2::element_blank(),
                    axis.text = ggplot2::element_blank(),
@@ -517,6 +701,10 @@ plot_sim_sizes_panel <- function(plots) {
 #'   true genotypes are drawn.
 #' @param distance if TRUE, draw the distance tree instead of the time tree
 #' @param site_width width of a site as a fraction of the width of the tree
+#' @param max_cells largest number of cells (tips) drawn. With more cells, a random subsample of
+#'   \code{max_cells} cells is drawn, with the tree pruned to them, and the plot says so.
+#' @param seed seed of the random subsample (the random number generator of the session is restored
+#'   afterwards)
 #' @param genotypes if TRUE, draw one tile per cell and site, coloured by the genotype (16 colours:
 #'   the hue is the nucleotide of allele 1, the shade the nucleotide of allele 2), instead of two
 #'   tiles of four colours. With \code{errors = TRUE}, the genotypes changed by the error are marked
@@ -524,9 +712,13 @@ plot_sim_sizes_panel <- function(plots) {
 #'
 #' @return a ggplot object
 #' @export
-plot_sim_snv <- function(tree, snv, errors = FALSE, distance = FALSE, site_width = 0.015, genotypes = FALSE) {
+plot_sim_snv <- function(tree, snv, errors = FALSE, distance = FALSE, site_width = 0.015, genotypes = FALSE,
+                         max_cells = 500, seed = 1) {
   .require_pkgs(c("ggplot2", "ggtree"))
   stopifnot(is.list(snv), all(c("true", "observed") %in% names(snv)))
+  sub <- .subsample_cells(tree, max_cells, seed)
+  tree <- sub$tree
+  snv <- lapply(snv, .rekey_cells, keep = sub$keep)
 
   shown <- .allele_matrices(tree, snv, if (errors) "observed" else "true")
   p <- .plot_layer_tree(tree, distance = distance, pad = 0.02)
@@ -538,7 +730,7 @@ plot_sim_snv <- function(tree, snv, errors = FALSE, distance = FALSE, site_width
   x0 <- max(p$data$x) + 0.04 * tree_width
   n_sites <- ncol(shown$allele1)
 
-  if (genotypes) return(.plot_snv_genotypes(p, shown, tree, snv, errors, y, x0, w))
+  if (genotypes) return(.add_note(.plot_snv_genotypes(p, shown, tree, snv, errors, y, x0, w), .subsample_note(sub)))
 
   # long format: the two alleles of a site side by side (allele 1 left, allele 2 right), each half a site wide
   left <- x0 + w / 2
@@ -573,7 +765,7 @@ plot_sim_snv <- function(tree, snv, errors = FALSE, distance = FALSE, site_width
       ggplot2::scale_shape_manual(values = .error_shapes, name = "error", limits = names(.error_shapes),
                                   drop = FALSE)
   }
-  return(p)
+  return(.add_note(p, .subsample_note(sub)))
 }
 
 # plot_sim_snv() with one tile of 16 colours per cell and site
@@ -647,8 +839,13 @@ plot_sim_snv <- function(tree, snv, errors = FALSE, distance = FALSE, site_width
 #'
 #' @return a ggplot object
 #' @export
-plot_sim_binary <- function(tree, bin, errors = NULL, distance = FALSE, gap = 2, site_width = 0.006) {
+plot_sim_binary <- function(tree, bin, errors = NULL, distance = FALSE, gap = 2, site_width = 0.006,
+                            max_cells = 500, seed = 1) {
   .require_pkgs(c("ggplot2", "ggtree"))
+  sub <- .subsample_cells(tree, max_cells, seed)
+  tree <- sub$tree
+  bin <- .rekey_cells(bin, sub$keep)
+  errors <- .rekey_cells(errors, sub$keep)
   seq_cols <- grep("^binary_", names(bin), value = TRUE)
   if (length(seq_cols) == 0) {
     stop("`bin` must be the data frame returned by sim_binary() with `write_as_string = TRUE`.",
@@ -682,7 +879,7 @@ plot_sim_binary <- function(tree, bin, errors = NULL, distance = FALSE, gap = 2,
                        xmax = max(p$data$x) + offset + (last + 0.5) * w,
                        ymin = 0.5, ymax = nrow(mats[[1]]) + 0.5)
   shown <- names(.binary_cols)[names(.binary_cols) %in% unlist(mats)]
-  suppressMessages(
+  out <- suppressMessages(
     ggtree::gheatmap(p, df, offset = offset, width = width, colnames = FALSE, color = NA) +
       ggplot2::geom_rect(data = frames,
                          ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax, ymin = .data$ymin, ymax = .data$ymax),
@@ -690,6 +887,7 @@ plot_sim_binary <- function(tree, bin, errors = NULL, distance = FALSE, gap = 2,
       ggplot2::scale_fill_manual(values = .binary_cols, name = "state", na.translate = FALSE, breaks = shown,
                                  guide = ggplot2::guide_legend(override.aes = list(color = "grey40")))
   )
+  .add_note(out, .subsample_note(sub))
 }
 
 #' Tree with the lineage barcodes of the tips
@@ -710,8 +908,12 @@ plot_sim_binary <- function(tree, bin, errors = NULL, distance = FALSE, gap = 2,
 #'
 #' @return a ggplot object
 #' @export
-plot_sim_barcodes <- function(tree, bc, n_edits, missing_state = "-", gap = 2, site_width = 0.025) {
+plot_sim_barcodes <- function(tree, bc, n_edits, missing_state = "-", gap = 2, site_width = 0.025,
+                              max_cells = 500, seed = 1) {
   .require_pkgs(c("ggplot2", "ggtree"))
+  sub <- .subsample_cells(tree, max_cells, seed)
+  tree <- sub$tree
+  bc <- .rekey_cells(bc, sub$keep)
   mats <- .barcode_matrices(tree, bc, missing_state)
   cols <- c(stats::setNames(c(.unedited_col, grDevices::hcl.colors(n_edits, "Viridis", rev = TRUE)),
                             c("0", seq_len(n_edits))),
@@ -724,12 +926,13 @@ plot_sim_barcodes <- function(tree, bc, n_edits, missing_state = "-", gap = 2, s
   # legend: the states that occur, with fixed colours and names
   labels <- stats::setNames(c("unedited", paste("edit", seq_len(n_edits)), "missing"), names(cols))
   shown <- names(cols)[names(cols) %in% unlist(mats)]
-  suppressMessages(
+  out <- suppressMessages(
     ggtree::gheatmap(p, df, offset = 0.1 * tree_width, width = n_cols * site_width,
                      colnames = FALSE, color = "white") +
       ggplot2::scale_fill_manual(values = cols, name = "state", na.translate = FALSE,
                                  breaks = shown, labels = labels[shown])
   )
+  .add_note(out, .subsample_note(sub))
 }
 
 # Barcode states of the tips as one matrix per barcode (tips x sites, rownames = tip labels); `bc` has

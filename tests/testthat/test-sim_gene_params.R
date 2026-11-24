@@ -1,37 +1,37 @@
-# ---- gene_prior() and rgene_prior() ----
+# ---- sim_prior() and rsim_prior() ----
 
-test_that("gene_prior describes the four families, by name or by position", {
-  expect_s3_class(gene_prior("exponential", rate = 2), "gene_prior")
-  expect_equal(gene_prior("lognormal", -2, 1)$params, list(meanlog = -2, sdlog = 1))
-  expect_equal(gene_prior("normal", mean = 1, sd = 0.5)$params, list(mean = 1, sd = 0.5))
-  expect_equal(gene_prior("uniform", 0, 3, lower = 1)$lower, 1)
-  expect_output(print(gene_prior("exponential", rate = 2, lower = 0.1)), "exponential\\(rate = 2\\).*\\[0.1, Inf\\]")
+test_that("sim_prior describes the four families, by name or by position", {
+  expect_s3_class(sim_prior("exponential", rate = 2), "sim_prior")
+  expect_equal(sim_prior("lognormal", -2, 1)$params, list(meanlog = -2, sdlog = 1))
+  expect_equal(sim_prior("normal", mean = 1, sd = 0.5)$params, list(mean = 1, sd = 0.5))
+  expect_equal(sim_prior("uniform", 0, 3, lower = 1)$lower, 1)
+  expect_output(print(sim_prior("exponential", rate = 2, lower = 0.1)), "exponential\\(rate = 2\\).*\\[0.1, Inf\\]")
 })
 
-test_that("gene_prior validates the parameters and the bounds", {
-  expect_error(gene_prior("exponential"), "rate")
-  expect_error(gene_prior("exponential", rate = -1), "positive")
-  expect_error(gene_prior("exponential", sd = 1), "rate")
-  expect_error(gene_prior("normal", mean = 0, sd = 0), "standard deviation")
-  expect_error(gene_prior("uniform", min = 2, max = 1), "minimum")
-  expect_error(gene_prior("exponential", rate = c(1, 2)), "rate")
-  expect_error(gene_prior("exponential", rate = 1, lower = 2, upper = 1), "lower")
-  expect_error(gene_prior("gamma"), "should be one of")
+test_that("sim_prior validates the parameters and the bounds", {
+  expect_error(sim_prior("exponential"), "rate")
+  expect_error(sim_prior("exponential", rate = -1), "positive")
+  expect_error(sim_prior("exponential", sd = 1), "rate")
+  expect_error(sim_prior("normal", mean = 0, sd = 0), "standard deviation")
+  expect_error(sim_prior("uniform", min = 2, max = 1), "minimum")
+  expect_error(sim_prior("exponential", rate = c(1, 2)), "rate")
+  expect_error(sim_prior("exponential", rate = 1, lower = 2, upper = 1), "lower")
+  expect_error(sim_prior("gamma"), "should be one of")
 })
 
-test_that("rgene_prior draws inside the bounds and is reproducible", {
-  prior <- gene_prior("normal", mean = 0, sd = 1, lower = 0, upper = 1)
+test_that("rsim_prior draws inside the bounds and is reproducible", {
+  prior <- sim_prior("normal", mean = 0, sd = 1, lower = 0, upper = 1)
   set.seed(1)
-  x <- rgene_prior(500, prior)
+  x <- rsim_prior(500, prior)
   expect_length(x, 500)
   expect_true(all(x >= 0 & x <= 1))
   set.seed(1)
-  expect_identical(rgene_prior(500, prior), x)
+  expect_identical(rsim_prior(500, prior), x)
   # untruncated draws are those of the base R generator
-  set.seed(2); a <- rgene_prior(5, gene_prior("lognormal", meanlog = -1, sdlog = 2))
+  set.seed(2); a <- rsim_prior(5, sim_prior("lognormal", meanlog = -1, sdlog = 2))
   set.seed(2); expect_identical(a, stats::rlnorm(5, -1, 2))
-  expect_error(rgene_prior(10, gene_prior("uniform", min = 0, max = 1, lower = 5)), "incompatible")
-  expect_error(rgene_prior(3, list(rate = 1)))
+  expect_error(rsim_prior(10, sim_prior("uniform", min = 0, max = 1, lower = 5)), "incompatible")
+  expect_error(rsim_prior(3, list(rate = 1)))
 })
 
 # ---- sim_gene_params() ----
@@ -68,15 +68,15 @@ test_that("sim_gene_params respects the bounds of the priors and the probability
   tree <- make_tree3()
   set.seed(1)
   genes <- sim_gene_params(tree, n_genes = 300, pi_ou = 1,
-                           alpha = gene_prior("exponential", rate = 1, lower = 0.5),
-                           sigma2 = gene_prior("uniform", min = 0.1, max = 0.4))
+                           alpha = sim_prior("exponential", rate = 1, lower = 0.5),
+                           sigma2 = sim_prior("uniform", min = 0.1, max = 0.4, lower = 0))
   expect_true(all(genes$class == "OU"))
   expect_true(all(genes$alpha >= 0.5))
   expect_true(all(genes$sigma2 >= 0.1 & genes$sigma2 <= 0.4))
   expect_true(all(genes$sd_stat == sqrt(genes$sigma2 / (2 * genes$alpha))))
   expect_true(all(sim_gene_params(tree, n_genes = 20, pi_ou = 0)$class == "BM"))
   # eta = 0: every type has the same optimum
-  flat <- sim_gene_params(tree, n_genes = 20, pi_ou = 1, eta = gene_prior("uniform", min = 0, max = 1e-6))
+  flat <- sim_gene_params(tree, n_genes = 20, pi_ou = 1, eta = sim_prior("uniform", min = 0, max = 1e-6, lower = 0))
   expect_true(all(flat$theta_gap < 1e-5))
 })
 
@@ -93,7 +93,7 @@ test_that("sim_gene_params validates its input", {
   expect_error(sim_gene_params(1), "treedata")
   expect_error(sim_gene_params(tree, n_genes = 0), "n_genes")
   expect_error(sim_gene_params(tree, pi_ou = 2), "pi_ou")
-  expect_error(sim_gene_params(tree, alpha = 1), "gene_prior")
+  expect_error(sim_gene_params(tree, alpha = 1), "sim_prior")
   expect_error(sim_gene_params(tree, psi_concentration = 0), "psi_concentration")
   expect_error(sim_gene_params(tree, n_types = 2), "types outside")
   expect_error(sim_gene_params(tree, mean_count_gene = -1), "mean_count_gene")
@@ -214,9 +214,44 @@ test_that("sim_count_params validates its input", {
   genes <- sim_gene_params(tree, n_genes = 3)
   expr <- sim_expression_matrix(tree, alpha = genes$alpha, sigmasq = genes$sigma2, root_value = genes$x_root,
                                 theta = gene_optima(genes), gene_names = genes$gene)
-  expect_error(sim_count_params(expr, tree, genes, phi = 1), "gene_prior")
+  expect_error(sim_count_params(expr, tree, genes, phi = 1), "sim_prior")
   expect_error(sim_count_params(expr, tree, genes, cell_size_sd = -1), "cell_size_sd")
   expect_error(sim_count_params(expr, tree, genes, target_mean_count = 0), "target_mean_count")
   expect_error(sim_count_params(expr[-3], tree, genes), "column for every gene")
   expect_error(sim_count_params(expr, tree, genes[names(genes) != "log_g"], phi_mode = "trend"), "log_g")
+})
+
+# ---- sim_dirichlet() and the bounds of the priors ----
+
+test_that("sim_dirichlet draws probabilities", {
+  set.seed(1)
+  p <- sim_dirichlet(5, concentration = 2)
+  expect_length(p, 5)
+  expect_equal(sum(p), 1)
+  expect_true(all(p > 0))
+  set.seed(1); expect_identical(sim_dirichlet(5, 2), p)
+  expect_equal(sim_dirichlet(1), 1)
+  # a small concentration puts the mass on a few outcomes
+  set.seed(2)
+  spread <- function(conc) mean(replicate(200, max(sim_dirichlet(4, conc))))
+  expect_gt(spread(0.1), spread(10))
+  expect_error(sim_dirichlet(0), "positive whole number")
+  expect_error(sim_dirichlet(3, concentration = 0), "positive")
+})
+
+test_that("the priors of the parameters that cannot be negative need a lower bound of at least 0", {
+  tree <- make_tree3()
+  expect_error(sim_gene_params(tree, alpha = sim_prior("normal", mean = 1, sd = 1)), "lower bound")
+  expect_error(sim_gene_params(tree, eta = sim_prior("normal", mean = 1, sd = 1)), "lower bound")
+  expect_error(sim_gene_params(tree, sigma2 = sim_prior("normal", mean = 1, sd = 1, lower = -1)), "lower bound")
+  expect_no_error(sim_gene_params(tree, n_genes = 5, alpha = sim_prior("normal", mean = 1, sd = 1, lower = 0.2)))
+  # the support of the family counts: an exponential, a lognormal or a uniform above 0 need no bound
+  expect_no_error(sim_gene_params(tree, n_genes = 5, eta = sim_prior("exponential", rate = 1)))
+  expect_no_error(sim_gene_params(tree, n_genes = 5, sigma2 = sim_prior("lognormal", meanlog = 0, sdlog = 1)))
+  expect_no_error(sim_gene_params(tree, n_genes = 5, sigma2 = sim_prior("uniform", min = 0.1, max = 0.4)))
+  expect_error(sim_gene_params(tree, n_genes = 5, sigma2 = sim_prior("uniform", min = -1, max = 1)), "lower bound")
+  genes <- make_tree3()
+  g <- sim_gene_params(genes, n_genes = 5)
+  e <- sim_expression_matrix(genes, alpha = g$alpha, sigmasq = g$sigma2, root_value = g$x_root, theta = gene_optima(g), gene_names = g$gene)
+  expect_error(sim_count_params(e, genes, g, phi = sim_prior("normal", mean = 1, sd = 1)), "lower bound")
 })

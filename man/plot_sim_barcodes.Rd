@@ -10,7 +10,9 @@ plot_sim_barcodes(
   n_edits,
   missing_state = "-",
   gap = 2,
-  site_width = 0.025
+  site_width = 0.025,
+  max_cells = 500,
+  seed = 1
 )
 }
 \arguments{
@@ -30,6 +32,12 @@ not depend on which outcomes happen to occur}
 \item{gap}{number of empty columns between the barcodes}
 
 \item{site_width}{width of a site as a fraction of the width of the tree}
+
+\item{max_cells}{largest number of cells (tips) drawn. With more cells, a random subsample of
+\code{max_cells} cells is drawn, with the tree pruned to them, and the plot says so.}
+
+\item{seed}{seed of the random subsample (the random number generator of the session is restored
+afterwards)}
 }
 \value{
 a ggplot object

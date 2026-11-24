@@ -4,7 +4,7 @@
 \alias{plot_sim_results}
 \title{Result plots of a simulation of expression and counts}
 \usage{
-plot_sim_results(sim, max_genes_heatmap = 300)
+plot_sim_results(sim, max_genes_heatmap = 300, max_cells_heatmap = 500)
 }
 \arguments{
 \item{sim}{a list describing the simulation, with elements
@@ -25,6 +25,8 @@ the total counts per cell and per gene
 
 \item{max_genes_heatmap}{maximum number of genes shown in the counts matrix;
 if there are more, an evenly spaced subset is shown}
+
+\item{max_cells_heatmap}{the same for the cells}
 }
 \value{
 a named list of ggplot objects: \code{oumparams} and \code{modelclass}

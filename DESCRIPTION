@@ -33,6 +33,7 @@ Suggests:
     scico,
     shiny,
     testthat (>= 3.0.0),
+    uwot,
     viridis,
     withr
 VignetteBuilder: knitr

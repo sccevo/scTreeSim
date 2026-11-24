@@ -26,7 +26,11 @@ of data of this package, using its simulation functions: SNV mutations
 this order, and uses the tree of the first tab. The tree has any number of types
 and is simulated up to a number of tips (\code{\link{sim_adb_ntaxa_samp}}) or up
 to a time (\code{\link{sim_adb_origin_samp}}). The parameters of the genes are
-drawn from priors, or read from a table with one row per gene.
+drawn from priors (a distribution, its parameters and bounds), or read from a table with
+one row per gene. The tree can have up to 10,000 tips: the plots that draw a row per cell
+show a random subsample of the cells (see \code{max_cells} in
+\code{\link{plot_sim_snv}}), and the summaries and the downloads use all of them. The
+tabs after the tree are available once a tree has been simulated.
 }
 \details{
 The button "Reproduce in R" downloads an R script with the code and the seeds
@@ -36,5 +40,5 @@ the script in one \code{.rds} file; the tabs of the expression and the counts
 also download their true parameters as tables.
 
 The app needs the suggested packages \pkg{shiny}, \pkg{bslib},
-\pkg{ggplot2}, \pkg{ggtree}, \pkg{ggpubr} and \pkg{viridis}.
+\pkg{ggplot2}, \pkg{ggtree}, \pkg{ggpubr}, \pkg{viridis} and \pkg{uwot}.
 }

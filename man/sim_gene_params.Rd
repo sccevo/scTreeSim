@@ -9,9 +9,9 @@ sim_gene_params(
   n_genes = 100,
   n_types = NULL,
   pi_ou = 0.5,
-  alpha = gene_prior("exponential", rate = 1, lower = 0.1),
-  sigma2 = gene_prior("exponential", rate = 1, lower = 1e-08, upper = 2),
-  eta = gene_prior("exponential", rate = 1, lower = 0),
+  alpha = sim_prior("exponential", rate = 1, lower = 0.1),
+  sigma2 = sim_prior("exponential", rate = 1, lower = 1e-08, upper = 2),
+  eta = sim_prior("exponential", rate = 1, lower = 0),
   psi_concentration = 0.5,
   mean_count_gene = 1,
   log_g_sd = 1.5,
@@ -29,9 +29,10 @@ plus one.}
 
 \item{pi_ou}{probability that a gene is OU rather than BM}
 
-\item{alpha, sigma2, eta}{\code{\link{gene_prior}}s of the strength of selection
+\item{alpha, sigma2, eta}{\code{\link{sim_prior}}s of the strength of selection
 (OU genes only), the variance of the driving noise and the separation of the
-optima (OU genes only). The default bounds are those of the app: an OU gene
+optima (OU genes only). None of them can be negative: a prior that can give
+negative values (a normal, say) needs a lower bound of at least 0. The default bounds are those of the app: an OU gene
 has \code{alpha >= 0.1} and the variance is at most 2.}
 
 \item{psi_concentration}{concentration of the Dirichlet distribution of the

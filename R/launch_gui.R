@@ -11,7 +11,11 @@
 #' this order, and uses the tree of the first tab. The tree has any number of types
 #' and is simulated up to a number of tips (\code{\link{sim_adb_ntaxa_samp}}) or up
 #' to a time (\code{\link{sim_adb_origin_samp}}). The parameters of the genes are
-#' drawn from priors, or read from a table with one row per gene.
+#' drawn from priors (a distribution, its parameters and bounds), or read from a table with
+#' one row per gene. The tree can have up to 10,000 tips: the plots that draw a row per cell
+#' show a random subsample of the cells (see \code{max_cells} in
+#' \code{\link{plot_sim_snv}}), and the summaries and the downloads use all of them. The
+#' tabs after the tree are available once a tree has been simulated.
 #'
 #' The button "Reproduce in R" downloads an R script with the code and the seeds
 #' of the simulation that is shown, which uses the functions of this package. The
@@ -20,7 +24,7 @@
 #' also download their true parameters as tables.
 #'
 #' The app needs the suggested packages \pkg{shiny}, \pkg{bslib},
-#' \pkg{ggplot2}, \pkg{ggtree}, \pkg{ggpubr} and \pkg{viridis}.
+#' \pkg{ggplot2}, \pkg{ggtree}, \pkg{ggpubr}, \pkg{viridis} and \pkg{uwot}.
 #'
 #' @param ... further arguments passed to \code{shiny::runApp()}, e.g.
 #'   \code{port} or \code{launch.browser}
@@ -29,7 +33,7 @@
 #'   \code{shiny::runApp()} invisibly.
 #' @export
 launch_gui <- function(...) {
-  .require_pkgs(c("shiny", "bslib", "ggplot2", "ggtree", "ggpubr", "viridis"))
+  .require_pkgs(c("shiny", "bslib", "ggplot2", "ggtree", "ggpubr", "viridis", "uwot"))
 
   app_dir <- system.file("app", package = "scTreeSim")
   if (app_dir == "") {

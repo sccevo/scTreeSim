@@ -182,7 +182,7 @@ head(expr_mat)
 ## Many genes, with parameters drawn from priors
 
 To simulate hundreds of genes, `sim_gene_params()` draws the parameters of every gene from priors
-(`gene_prior()`): each gene is a Brownian motion (`alpha = 0`) or an OU process, whose optima in the types
+(`sim_prior()`): each gene is a Brownian motion (`alpha = 0`) or an OU process, whose optima in the types
 are separated by `eta`. It returns the table of true parameters, one row per gene, and does not set the seed:
 call `set.seed()` first to get the same genes again. `gene_optima()` arranges the optima as the `theta` of
 `sim_expression_matrix()`. To specify the parameters yourself, `gene_params_from_table()` builds the same table
@@ -191,13 +191,23 @@ from a data frame with the columns `alpha`, `sigma2` and `theta_0`, `theta_1`, .
 ```{r}
 set.seed(4)
 genes <- sim_gene_params(mt_tree, n_genes = 6, n_types = 2, pi_ou = 0.5,
-                         alpha = gene_prior("exponential", rate = 1, lower = 0.1),
-                         eta = gene_prior("exponential", rate = 1))
+                         alpha = sim_prior("exponential", rate = 1, lower = 0.1),
+                         eta = sim_prior("exponential", rate = 1))
 genes[c("gene", "class_eff", "alpha", "sigma2", "theta_0", "theta_1")]
 
 expr_genes <- sim_expression_matrix(mt_tree, alpha = genes$alpha, sigmasq = genes$sigma2,
                                     root_value = genes$x_root, theta = gene_optima(genes),
                                     gene_names = genes$gene)
+```
+
+`summarize_expression()` reports quick sanity checks of the genes (and `summarize_tree()`, `summarize_snv()`,
+`summarize_binary()`, `summarize_barcodes()` and `summarize_counts()` those of the other layers; they return the
+numbers, and `print()` shows them as text). `plot_sim_umap()` embeds the cells from their latent expression with UMAP
+and colours them by cell type; it needs the package `uwot`, and takes a `seed`, as UMAP uses random numbers.
+
+```{r, eval = requireNamespace("uwot", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE)}
+summarize_expression(expr_genes, mt_tree, genes)
+plot_sim_umap(expr_genes, mt_tree, seed = 1)
 ```
 
 # Single-cell gene expression counts

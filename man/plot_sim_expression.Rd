@@ -10,7 +10,9 @@ plot_sim_expression(
   truth = NULL,
   max_genes = 200,
   gap = 2,
-  heat_width = 0.8
+  heat_width = 0.8,
+  max_cells = 500,
+  seed = 1
 )
 }
 \arguments{
@@ -28,6 +30,12 @@ class.}
 \item{gap}{number of empty columns between the classes of genes}
 
 \item{heat_width}{width of the heatmap as a fraction of the width of the tree}
+
+\item{max_cells}{largest number of cells (tips) drawn. With more cells, a random subsample of
+\code{max_cells} cells is drawn, with the tree pruned to them, and the plot says so.}
+
+\item{seed}{seed of the random subsample (the random number generator of the session is restored
+afterwards)}
 }
 \value{
 a ggplot object

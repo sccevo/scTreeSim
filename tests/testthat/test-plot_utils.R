@@ -328,3 +328,127 @@ test_that("plot_sim_params draws the proportions of the optima of any number of 
   p <- plot_sim_params(truth)
   expect_true(all(c("psi_0", "psi_1") %in% levels(p$oumparams$data$param)))
 })
+
+# ---- many cells: subsample, automatic layout, UMAP ----
+
+test_that("the plots with a row per cell draw a random subsample, with the tree pruned to it, and say so", {
+  skip_if_not_installed("ggtree")
+  tree <- make_tree3(40)
+  ct <- clock_tree(tree, clock_strict(0.1))
+  n_total <- ape::Ntip(ct@phylo)
+  snv <- sim_gt16_nt_diploid(ct, n_sites = 5, clock = NULL, epsilon = 0.1, delta = 0.1)
+  tile_rows <- function(p) nrow(Filter(function(l) inherits(l$geom, "GeomTile"), p$layers)[[1]]$data)
+  for (args in list(list(), list(distance = TRUE), list(errors = TRUE), list(genotypes = TRUE))) {
+    p <- do.call(plot_sim_snv, c(list(ct, snv, max_cells = 12), args))
+    expect_no_error(ggplot2::ggplot_build(p))
+    expect_match(ggplot2::get_labs(p)$caption, sprintf("Random subsample of 12 of %d cells", n_total))
+    expect_equal(tile_rows(p), 12 * 5 * (if (isTRUE(args$genotypes)) 1 else 2))
+  }
+  # all the cells: no subsample, no note
+  full <- plot_sim_snv(ct, snv, max_cells = n_total)
+  expect_null(ggplot2::get_labs(full)$caption)
+  expect_equal(tile_rows(full), n_total * 5 * 2)
+  # the same seed gives the same cells, another seed other cells
+  cells <- function(seed) plot_sim_snv(ct, snv, max_cells = 12, seed = seed)$data$label[plot_sim_snv(ct, snv, max_cells = 12, seed = seed)$data$isTip]
+  expect_identical(cells(1), cells(1))
+  expect_false(identical(cells(1), cells(2)))
+})
+
+test_that("the subsample keeps the data of the cells that are shown", {
+  tree <- make_tree3(40)
+  ct <- clock_tree(tree, clock_strict(0.1))
+  sub <- .subsample_cells(ct, 10, seed = 3)
+  expect_equal(ape::Ntip(sub$tree@phylo), 10)
+  expect_equal(sub$tree@phylo$tip.label, as.character(sub$keep))
+  expect_equal(sub$tree@data$type[sub$tree@data$node <= 10], ct@data$type[match(sub$keep, ct@data$node)])
+  expect_true("distance" %in% names(sub$tree@data))
+  # every kept node has its parent: the pruned tree is connected up to a single root
+  edge <- sub$tree@phylo$edge
+  expect_equal(length(setdiff(edge[, 1], edge[, 2])), 1)
+  expect_equal(nrow(sub$tree@data), 10 + sub$tree@phylo$Nnode)
+  for (seed in 1:30) {   # many subsamples: none loses a branch (a regression of the climb to the root)
+    pruned <- .subsample_cells(ct, 10, seed)$tree@phylo
+    expect_equal(length(setdiff(pruned$edge[, 1], pruned$edge[, 2])), 1)
+    expect_equal(nrow(pruned$edge), ape::Ntip(pruned) + pruned$Nnode - 1)
+  }
+  expect_equal(sub$tree@phylo$root.edge, ct@phylo$root.edge)
+  # the table of a layer is renumbered like the tips of the pruned tree
+  snv <- sim_gt16_nt_diploid(ct, n_sites = 4, clock = NULL)
+  full <- .allele_matrices(ct, snv, "true")
+  pruned <- .allele_matrices(sub$tree, lapply(snv, .rekey_cells, keep = sub$keep), "true")
+  expect_equal(unname(pruned$allele1), unname(full$allele1[sub$keep, ]))
+  expect_equal(rownames(pruned$allele1), rownames(full$allele1)[sub$keep])
+  # the random numbers of the session are not touched
+  set.seed(10); a <- stats::runif(1)
+  set.seed(10); .subsample_cells(ct, 10, seed = 99); expect_equal(stats::runif(1), a)
+  expect_identical(.subsample_cells(ct, 1000, 1)$tree, ct)
+})
+
+test_that("the binary, barcode and expression plots subsample the cells too", {
+  skip_if_not_installed("ggtree")
+  tree <- make_tree3(40)
+  ct <- clock_tree(tree, clock_strict(0.2))
+  set.seed(1)
+  bin <- sim_binary(ct, n_sites = 8, clock = NULL, alpha = 0.1, beta = 0.1)
+  true <- sim_binary(ct, n_sites = 8, clock = NULL)
+  bc <- sim_barcode_seq(tree, n_barcodes = 1, n_sites = 4, edit_rate = 1, edit_probs = c(0.5, 0.5))
+  genes <- sim_gene_params(tree, n_genes = 6)
+  expr <- sim_expression_matrix(tree, alpha = genes$alpha, sigmasq = genes$sigma2, root_value = genes$x_root,
+                                theta = gene_optima(genes), gene_names = genes$gene)
+  plots <- list(plot_sim_binary(ct, bin, max_cells = 9), plot_sim_binary(ct, bin, errors = true, max_cells = 9),
+                plot_sim_barcodes(tree, bc, n_edits = 2, max_cells = 9), plot_sim_expression(expr, tree, genes, max_cells = 9))
+  for (p in plots) {
+    expect_no_error(ggplot2::ggplot_build(p))
+    expect_match(ggplot2::get_labs(p)$caption, "Random subsample of 9 of")
+  }
+})
+
+test_that("plot_sim_tree chooses a circular layout for big trees and hides the labels of many tips", {
+  skip_if_not_installed("ggtree")
+  tree <- make_tree3(40)
+  circular <- plot_sim_tree(tree, max_tips_rectangular = 10)
+  expect_s3_class(circular$coordinates, "CoordPolar")
+  expect_false(inherits(plot_sim_tree(tree)$coordinates, "CoordPolar"))
+  expect_s3_class(plot_sim_tree(tree, layout = "rectangular", max_tips_rectangular = 10)$coordinates, "CoordCartesian")
+  hidden <- plot_sim_tree(tree, show_tips = TRUE, max_tip_labels = 10)
+  expect_match(ggplot2::get_labs(hidden)$caption, "tip labels are not shown")
+  expect_null(ggplot2::get_labs(plot_sim_tree(tree, show_tips = TRUE))$caption)
+})
+
+test_that("plot_sim_params also draws the optima of the types, and the counts matrix is subsampled in cells", {
+  skip_if_not_installed("ggplot2")
+  tree <- make_tree3(30)
+  set.seed(1)
+  genes <- sim_gene_params(tree, n_genes = 40, pi_ou = 0.8)
+  p <- plot_sim_params(genes)
+  expect_named(p, c("oumparams", "modelclass", "thetas"))
+  expect_equal(levels(p$thetas$data$type), paste("type", 0:2))
+  expect_true(all(p$thetas$data$class_eff != "BM"))
+  expect_no_error(ggplot2::ggplot_build(p$thetas))
+  expect_named(plot_sim_params(make_sim()$truth), c("oumparams", "modelclass"))   # no optima in the table
+  skip_if_not_installed("ggpubr"); skip_if_not_installed("viridis")
+  sim <- make_sim(n_cell = 60)
+  big <- plot_sim_results(sim, max_cells_heatmap = 20)
+  expect_equal(length(unique(big$countsmatrix$data$cell)), 20)
+  expect_match(big$countsmatrix$labels$x, "evenly spaced subset of 20")
+})
+
+test_that("plot_sim_umap draws one point per cell, coloured by cell type, and is reproducible", {
+  skip_if_not_installed("uwot")
+  tree <- make_tree3(40)
+  set.seed(1)
+  genes <- sim_gene_params(tree, n_genes = 30, pi_ou = 1)
+  expr <- sim_expression_matrix(tree, alpha = genes$alpha, sigmasq = genes$sigma2, root_value = genes$x_root,
+                                theta = gene_optima(genes), gene_names = genes$gene)
+  p <- plot_sim_umap(expr, tree)
+  expect_equal(nrow(p$data), sum(tree@data$status == 1))
+  expect_equal(levels(p$data$type), as.character(sort(unique(tree@data$type))))
+  expect_equal(as.character(p$data$type), as.character(tree@data$type[match(as.integer(p$data$cell), tree@data$node)]))
+  expect_no_error(ggplot2::ggplot_build(p))
+  expect_equal(plot_sim_umap(expr, tree)$data, p$data)               # the default seed
+  expect_false(isTRUE(all.equal(plot_sim_umap(expr, tree, seed = 2)$data$UMAP1, p$data$UMAP1)))
+  set.seed(5); a <- stats::runif(1)
+  set.seed(5); plot_sim_umap(expr, tree); expect_equal(stats::runif(1), a)   # the session's random numbers are not touched
+  expect_error(plot_sim_umap(expr[1:3], tree), "at least 2 genes")
+  expect_no_error(plot_sim_umap(expr, tree, max_genes = 5))
+})

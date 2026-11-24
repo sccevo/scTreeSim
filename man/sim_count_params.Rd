@@ -10,7 +10,7 @@ sim_count_params(
   gene_params,
   cell_size_sd = 0.9,
   target_mean_count = NULL,
-  phi = gene_prior("lognormal", meanlog = -2, sdlog = 2, lower = 1e-08),
+  phi = sim_prior("lognormal", meanlog = -2, sdlog = 2, lower = 1e-08),
   phi_mode = c("prior", "trend"),
   phi_a0 = 0.1,
   phi_a1 = 0.5,
@@ -33,7 +33,7 @@ trend}
 \item{target_mean_count}{mean count per gene and cell to calibrate to, or
 \code{NULL} (default) for no calibration}
 
-\item{phi}{a \code{\link{gene_prior}} of the dispersion (\code{phi_mode = "prior"})}
+\item{phi}{a \code{\link{sim_prior}} of the dispersion (\code{phi_mode = "prior"})}
 
 \item{phi_mode}{\code{"prior"} or \code{"trend"}}
 

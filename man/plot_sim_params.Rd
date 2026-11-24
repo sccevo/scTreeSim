@@ -13,7 +13,9 @@ plot_sim_params(truth)
 \code{psi_0}, \code{psi_1}, ..., one per type but the last)}
 }
 \value{
-a named list of two ggplot objects: \code{oumparams} and \code{modelclass}
+a named list of ggplot objects: \code{oumparams} and \code{modelclass}, and
+\code{thetas} (histograms of the optima \code{theta_0}, \code{theta_1}, ... of the types,
+one panel per type, for the OU genes) if the table has these columns
 }
 \description{
 Histograms of the process parameters of the simulated genes (\code{alpha},

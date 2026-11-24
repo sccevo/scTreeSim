@@ -1,100 +1,3 @@
-#' Prior distribution of a parameter
-#'
-#' Describes the distribution that a parameter of many genes is drawn from by
-#' \code{\link{sim_gene_params}} and \code{\link{sim_count_params}}, optionally
-#' truncated to an interval.
-#'
-#' The parameters of each family are
-#' \itemize{
-#'   \item \code{"exponential"}: \code{rate}
-#'   \item \code{"lognormal"}: \code{meanlog}, \code{sdlog}
-#'   \item \code{"normal"}: \code{mean}, \code{sd}
-#'   \item \code{"uniform"}: \code{min}, \code{max}
-#' }
-#' They can be given by name or in this order. Draws outside \code{[lower, upper]} are
-#' rejected and drawn again (see \code{\link{rgene_prior}}).
-#'
-#' @param family one of \code{"exponential"}, \code{"lognormal"}, \code{"normal"}
-#'   and \code{"uniform"}
-#' @param ... the parameters of the family (see Details)
-#' @param lower,upper bounds of the draws (default: no truncation)
-#'
-#' @return an object of class \code{gene_prior}
-#' @examples
-#' gene_prior("exponential", rate = 2)
-#' gene_prior("lognormal", meanlog = -2, sdlog = 1, lower = 1e-8)
-#' @export
-gene_prior <- function(family = c("exponential", "lognormal", "normal", "uniform"), ...,
-                       lower = -Inf, upper = Inf) {
-  family <- match.arg(family)
-  args <- list(...)
-  needed <- switch(family, exponential = "rate", lognormal = c("meanlog", "sdlog"),
-                   normal = c("mean", "sd"), uniform = c("min", "max"))
-  if (is.null(names(args))) names(args) <- rep("", length(args))
-  if (all(names(args) == "") && length(args) == length(needed)) names(args) <- needed
-  if (!setequal(names(args), needed) || length(args) != length(needed)) {
-    stop("The ", family, " prior needs ", paste0("`", needed, "`", collapse = " and "), ".", call. = FALSE)
-  }
-  args <- args[needed]
-  if (!all(vapply(args, function(a) is.numeric(a) && length(a) == 1 && is.finite(a), logical(1)))) {
-    stop("The ", family, " prior needs single finite numbers for ", paste0("`", needed, "`", collapse = " and "), ".", call. = FALSE)
-  }
-  if (family == "exponential" && args$rate <= 0) stop("The exponential rate must be positive.", call. = FALSE)
-  if (family %in% c("lognormal", "normal") && args[[2]] <= 0) stop("The standard deviation of the prior must be positive.", call. = FALSE)
-  if (family == "uniform" && args$min >= args$max) stop("The uniform minimum must be smaller than the maximum.", call. = FALSE)
-  if (!is.numeric(lower) || !is.numeric(upper) || length(lower) != 1 || length(upper) != 1 ||
-      is.na(lower) || is.na(upper) || lower >= upper) {
-    stop("`lower` must be smaller than `upper`.", call. = FALSE)
-  }
-  structure(list(family = family, params = args, lower = lower, upper = upper), class = "gene_prior")
-}
-
-#' @export
-print.gene_prior <- function(x, ...) {
-  cat(x$family, "(", paste(names(x$params), "=", format(unlist(x$params)), collapse = ", "), ")", sep = "")
-  if (is.finite(x$lower) || is.finite(x$upper)) cat(", truncated to [", x$lower, ", ", x$upper, "]", sep = "")
-  cat("\n")
-  invisible(x)
-}
-
-#' Draw from a prior
-#'
-#' Draws from a \code{\link{gene_prior}} by rejection sampling: the draws outside
-#' the bounds of the prior are drawn again.
-#'
-#' @param n number of draws
-#' @param prior a \code{\link{gene_prior}}
-#' @param max_iter number of rounds of redrawing after which the function gives
-#'   up, because the prior and its bounds are (almost) incompatible
-#'
-#' @return a numeric vector of length \code{n}
-#' @examples
-#' set.seed(1)
-#' rgene_prior(5, gene_prior("normal", mean = 0, sd = 1, lower = 0))
-#' @export
-rgene_prior <- function(n, prior, max_iter = 1000) {
-  stopifnot(inherits(prior, "gene_prior"))
-  p <- prior$params
-  draw <- function(k) switch(prior$family,
-    exponential = stats::rexp(k, p$rate),
-    lognormal = stats::rlnorm(k, p$meanlog, p$sdlog),
-    normal = stats::rnorm(k, p$mean, p$sd),
-    uniform = stats::runif(k, p$min, p$max))
-  x <- draw(n)
-  bad <- !(x >= prior$lower & x <= prior$upper)
-  iter <- 0
-  while (any(bad)) {
-    iter <- iter + 1
-    if (iter > max_iter) {
-      stop("The prior and its bounds are (almost) incompatible: no draws fall inside [",
-           prior$lower, ", ", prior$upper, "].", call. = FALSE)
-    }
-    x[bad] <- draw(sum(bad))
-    bad <- !(x >= prior$lower & x <= prior$upper)
-  }
-  x
-}
-
 # the root type and the height of a tree
 .tree_facts <- function(tree) {
   phy <- tree@phylo
@@ -155,9 +58,10 @@ rgene_prior <- function(n, prior, max_iter = 1000) {
 #' @param n_types number of types (regimes). Default: the largest type of the tree
 #'   plus one.
 #' @param pi_ou probability that a gene is OU rather than BM
-#' @param alpha,sigma2,eta \code{\link{gene_prior}}s of the strength of selection
+#' @param alpha,sigma2,eta \code{\link{sim_prior}}s of the strength of selection
 #'   (OU genes only), the variance of the driving noise and the separation of the
-#'   optima (OU genes only). The default bounds are those of the app: an OU gene
+#'   optima (OU genes only). None of them can be negative: a prior that can give
+#'   negative values (a normal, say) needs a lower bound of at least 0. The default bounds are those of the app: an OU gene
 #'   has \code{alpha >= 0.1} and the variance is at most 2.
 #' @param psi_concentration concentration of the Dirichlet distribution of the
 #'   share of each type in the deviations of the optima: below 1 the optima are far
@@ -189,9 +93,9 @@ rgene_prior <- function(n, prior, max_iter = 1000) {
 #' dim(expr)
 #' @export
 sim_gene_params <- function(tree, n_genes = 100, n_types = NULL, pi_ou = 0.5,
-                            alpha = gene_prior("exponential", rate = 1, lower = 0.1),
-                            sigma2 = gene_prior("exponential", rate = 1, lower = 1e-8, upper = 2),
-                            eta = gene_prior("exponential", rate = 1, lower = 0),
+                            alpha = sim_prior("exponential", rate = 1, lower = 0.1),
+                            sigma2 = sim_prior("exponential", rate = 1, lower = 1e-8, upper = 2),
+                            eta = sim_prior("exponential", rate = 1, lower = 0),
                             psi_concentration = 0.5, mean_count_gene = 1, log_g_sd = 1.5, gap_cutoff = 1) {
   stopifnot(methods::is(tree, "treedata"))
   if (!is.numeric(n_genes) || length(n_genes) != 1 || is.na(n_genes) || n_genes < 1 || n_genes != round(n_genes)) {
@@ -201,7 +105,8 @@ sim_gene_params <- function(tree, n_genes = 100, n_types = NULL, pi_ou = 0.5,
     stop("`pi_ou` must be a probability.", call. = FALSE)
   }
   for (p in list(alpha, sigma2, eta)) {
-    if (!inherits(p, "gene_prior")) stop("`alpha`, `sigma2` and `eta` must be created with gene_prior().", call. = FALSE)
+    if (!inherits(p, "sim_prior")) stop("`alpha`, `sigma2` and `eta` must be created with sim_prior().", call. = FALSE)
+    if (.support_lower(p) < 0) stop("The priors of `alpha`, `sigma2` and `eta` need a lower bound of at least 0: they cannot be negative.", call. = FALSE)
   }
   if (!is.numeric(psi_concentration) || length(psi_concentration) != 1 || !(psi_concentration > 0)) {
     stop("`psi_concentration` must be positive.", call. = FALSE)
@@ -221,12 +126,12 @@ sim_gene_params <- function(tree, n_genes = 100, n_types = NULL, pi_ou = 0.5,
   gene_class <- ifelse(is_bm, "BM", "OU")
 
   log_g   <- stats::rnorm(n_genes, log_g_mean, log_g_sd)
-  alpha   <- ifelse(is_bm, 0, rgene_prior(n_genes, alpha))
-  sigma2  <- rgene_prior(n_genes, sigma2)
+  alpha   <- ifelse(is_bm, 0, rsim_prior(n_genes, alpha))
+  sigma2  <- rsim_prior(n_genes, sigma2)
   # sd of x at the tips (BM) / stationary sd (OU)
   sd_stat <- ifelse(is_bm, sqrt(sigma2 * facts$height), sqrt(sigma2 / (2 * alpha)))
 
-  eta <- ifelse(is_bm, 0, rgene_prior(n_genes, eta))   # BM has no optima: eta and psi are unused
+  eta <- ifelse(is_bm, 0, rsim_prior(n_genes, eta))   # BM has no optima: eta and psi are unused
   # psi: the share of each type in the deviations of the optima, Dirichlet(psi_concentration, ...)
   psi <- if (n_types == 1) {
     matrix(1, n_genes, 1)
@@ -374,7 +279,7 @@ gene_optima <- function(gene_params) {
 #' @param cell_size_sd standard deviation (log scale) of the size factors
 #' @param target_mean_count mean count per gene and cell to calibrate to, or
 #'   \code{NULL} (default) for no calibration
-#' @param phi a \code{\link{gene_prior}} of the dispersion (\code{phi_mode = "prior"})
+#' @param phi a \code{\link{sim_prior}} of the dispersion (\code{phi_mode = "prior"})
 #' @param phi_mode \code{"prior"} or \code{"trend"}
 #' @param phi_a0,phi_a1,phi_sd parameters of the trend of the dispersion
 #'
@@ -399,11 +304,14 @@ gene_optima <- function(gene_params) {
 #' dim(counts)
 #' @export
 sim_count_params <- function(expr, tree, gene_params, cell_size_sd = 0.9, target_mean_count = NULL,
-                             phi = gene_prior("lognormal", meanlog = -2, sdlog = 2, lower = 1e-8),
+                             phi = sim_prior("lognormal", meanlog = -2, sdlog = 2, lower = 1e-8),
                              phi_mode = c("prior", "trend"), phi_a0 = 0.1, phi_a1 = 0.5, phi_sd = 0.3) {
   stopifnot(methods::is(tree, "treedata"), is.data.frame(expr), is.data.frame(gene_params))
   phi_mode <- match.arg(phi_mode)
-  if (phi_mode == "prior" && !inherits(phi, "gene_prior")) stop("`phi` must be created with gene_prior().", call. = FALSE)
+  if (phi_mode == "prior") {
+    if (!inherits(phi, "sim_prior")) stop("`phi` must be created with sim_prior().", call. = FALSE)
+    if (.support_lower(phi) < 0) stop("The prior of `phi` needs a lower bound of at least 0: the dispersion cannot be negative.", call. = FALSE)
+  }
   if (!is.numeric(cell_size_sd) || length(cell_size_sd) != 1 || !(cell_size_sd >= 0)) {
     stop("`cell_size_sd` must be non-negative.", call. = FALSE)
   }
@@ -417,7 +325,7 @@ sim_count_params <- function(expr, tree, gene_params, cell_size_sd = 0.9, target
   n_gene <- length(gene_ids)
 
   # in "trend" mode phi is computed after the level calibration, as it depends on the final log_g
-  phi_draw <- if (phi_mode == "prior") rgene_prior(n_gene, phi) else stats::rnorm(n_gene, 0, phi_sd)
+  phi_draw <- if (phi_mode == "prior") rsim_prior(n_gene, phi) else stats::rnorm(n_gene, 0, phi_sd)
   size_factor <- exp(stats::rnorm(n_tip, 0, cell_size_sd))
   size_factor <- size_factor / mean(size_factor)           # mean 1: g stays on the counts scale
   names(size_factor) <- as.character(tips)

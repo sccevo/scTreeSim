@@ -10,7 +10,9 @@ plot_sim_snv(
   errors = FALSE,
   distance = FALSE,
   site_width = 0.015,
-  genotypes = FALSE
+  genotypes = FALSE,
+  max_cells = 500,
+  seed = 1
 )
 }
 \arguments{
@@ -33,6 +35,12 @@ true genotypes are drawn.}
 the hue is the nucleotide of allele 1, the shade the nucleotide of allele 2), instead of two
 tiles of four colours. With \code{errors = TRUE}, the genotypes changed by the error are marked
 with a point.}
+
+\item{max_cells}{largest number of cells (tips) drawn. With more cells, a random subsample of
+\code{max_cells} cells is drawn, with the tree pruned to them, and the plot says so.}
+
+\item{seed}{seed of the random subsample (the random number generator of the session is restored
+afterwards)}
 }
 \value{
 a ggplot object

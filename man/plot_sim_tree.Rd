@@ -6,10 +6,12 @@
 \usage{
 plot_sim_tree(
   tree,
-  layout = "rectangular",
+  layout = "auto",
   show_tips = FALSE,
   show_axis = TRUE,
-  tip_size = 2.5
+  tip_size = 2.5,
+  max_tip_labels = 300,
+  max_tips_rectangular = 1000
 )
 }
 \arguments{
@@ -17,14 +19,22 @@ plot_sim_tree(
 e.g. from \code{\link{sim_adb_ntaxa_samp}}}
 
 \item{layout}{tree layout, passed to \code{ggtree::ggtree()}
-(e.g. "rectangular", "slanted", "circular", "equal_angle")}
+(e.g. "rectangular", "slanted", "circular", "equal_angle"), or \code{"auto"}
+(default): rectangular, and circular for trees with more than
+\code{max_tips_rectangular} tips}
 
-\item{show_tips}{if TRUE, label the tips}
+\item{show_tips}{if TRUE, label the tips (not with more than \code{max_tip_labels}
+tips: the labels would not be readable)}
 
 \item{show_axis}{if TRUE, add a time axis (rectangular and slanted layouts only)}
 
 \item{tip_size}{size of the tip labels (in mm); with many tips, use a small
 size or a tall figure so that the labels do not overlap}
+
+\item{max_tip_labels}{largest number of tips that are labelled}
+
+\item{max_tips_rectangular}{largest number of tips of a tree that \code{layout = "auto"}
+draws as a rectangular tree}
 }
 \value{
 a ggplot object
