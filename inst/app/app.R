@@ -2,7 +2,7 @@
 #   1. Simulate tree         - age-dependent branching process with any number of types, stopped at a number of tips
 #                              (sim_adb_ntaxa_samp()) or at a time (sim_adb_origin_samp()).
 #   2. Simulate mutations    - diploid SNVs under the GT16 model (sim_gt16_nt_diploid()).
-#   3. Simulate methylation  - binary sites (sim_binary()).
+#   3. Simulate binary trait - binary sites, e.g. methylation (sim_binary()).
 #   4. Simulate barcodes     - lineage barcodes (sim_barcode_seq(), sim_barcode_nonseq(), sim_barcode_generic()).
 #   5. Simulate expression   - BM / OU1 / OUM process per gene (sim_expression_matrix()), with the parameters of the
 #                              genes drawn from priors or read from a table.
@@ -94,6 +94,9 @@ snv_code <- function(p) {
   origin <- if (p$origin == "homozygous") {
     c(sprintf('x <- paste(sample(c("A", "C", "G", "T"), %s, replace = TRUE, prob = nuc_freq), collapse = "")', fmt_num(p$n_sites)),
       "origin_seq <- c(x, x)  # homozygous origin: the same random sequence on both alleles")
+  } else if (p$origin == "custom") {
+    c(sprintf('x <- "%s"', p$custom_seq),
+      "origin_seq <- c(x, x)  # homozygous origin: a custom sequence on both alleles")
   } else "origin_seq <- NULL  # the origin is drawn from the equilibrium frequencies"
   paste(c(sprintf("set.seed(%s)", fmt_num(p$seed)),
           sprintf("clock <- %s", p$clock),
@@ -112,7 +115,8 @@ bin_code <- function(p) {
               var, fmt_num(p$n_sites), fmt_num(p$n_sequences), fmt_num(p$lambda), fmt_num(alpha), fmt_num(beta)))
   }
   origin <- switch(p$origin, random = "origin_seq <- NULL  # drawn from the equilibrium", zeros = sprintf("origin_seq <- rep(0L, %s)", fmt_num(p$n_sites)),
-                   ones = sprintf("origin_seq <- rep(1L, %s)", fmt_num(p$n_sites)))
+                   ones = sprintf("origin_seq <- rep(1L, %s)", fmt_num(p$n_sites)),
+                   custom = sprintf('origin_seq <- as.integer(strsplit("%s", "")[[1]])  # a custom sequence', p$custom_seq))
   true <- if ((p$alpha > 0 || p$beta > 0) && p$n_sequences == 1) c("# the same sequence without the error", call("bin_true", 0, 0))
   paste(c(sprintf("set.seed(%s)", fmt_num(p$seed)), sprintf("clock <- %s", p$clock), "ct <- clock_tree(tree, clock)", origin,
           call("bin", p$alpha, p$beta), true, "# plot_sim_binary(ct, bin)"), collapse = "\n")
@@ -326,7 +330,7 @@ priorServer <- function(id, defaults, min_lower = -Inf) {
 }
 
 # ======================================================================================================
-# Clock module (mutations and methylation)
+# Clock module (mutations and binary trait)
 # ======================================================================================================
 
 clockUI <- function(id, default_rate = 0.15) {
@@ -386,6 +390,14 @@ clockServer <- function(id) {
         error = function(e) validate(need(FALSE, conditionMessage(e))))
     })
   })
+}
+
+# The custom sequence at the origin as typed: without spaces (and, for the binary trait, commas), in capitals for the
+# nucleotides. The number of sites is its length. At most MAX_CUSTOM_SITES sites.
+MAX_CUSTOM_SITES <- 1000
+clean_sequence <- function(x, binary = FALSE) {
+  x <- gsub(if (binary) "[[:space:],;]" else "[[:space:]]", "", if (is.null(x) || is.na(x)) "" else x)
+  if (binary) x else toupper(x)
 }
 
 # probabilities typed as numbers separated by commas; NULL if they are not valid or do not sum to 1
@@ -459,7 +471,7 @@ ui <- page_navbar(
     # expression): the server sends the list of the ones to enable or disable. Everything but the tree starts disabled.
     tags$script(HTML("
       (function() {
-        var treeTabs = ['mutations', 'methylation', 'barcodes', 'expression', 'counts'];
+        var treeTabs = ['mutations', 'binary', 'barcodes', 'expression', 'counts'];
         var treeButtons = ['download_script', 'download_all'];
         var buttonsDisabled = true;
         function setDisabled(el, disabled) {
@@ -512,7 +524,7 @@ ui <- page_navbar(
         uiOutput("type_params"),
         sliderInput("rho", "Sampling probability (rho)", min = 0.05, max = 1, value = 1, step = 0.05),
         checkboxInput("keep_single", "Keep single-child nodes (collapse = FALSE)", value = TRUE),
-        helpText("Keeps the divisions where a lineage died and the type changes that happen there. Without them a type change is hidden on a longer branch, which then takes the type of the node it ends in. This is needed for the type-dependent expression optima, the division-triggered spikes of the mutations and methylation, and the type-dependent barcode rates."),
+        helpText("Keeps the divisions where a lineage died and the type changes that happen there. Without them a type change is hidden on a longer branch, which then takes the type of the node it ends in. This is needed for the type-dependent expression optima, the division-triggered spikes of the mutations and the binary trait, and the type-dependent barcode rates."),
         checkboxInput("normalize_height", "Normalize the tree height", value = FALSE),
         conditionalPanel("input.normalize_height",
           numericInput("tree_height", "Height of the tree (time from the root to the tips)", value = 1, min = 0.001, step = 0.5),
@@ -545,10 +557,15 @@ ui <- page_navbar(
         width = 420,
         h5("Diploid SNVs (GT16 model)"),
         numericInput("snv_seed", "Random seed (mutations)", value = 2, step = 1),
-        sliderInput("snv_n_sites", "Number of sites", min = 5, max = 200, value = 40, step = 5),
         radioButtons("snv_origin", "Genotype at the origin",
                      choices = c("Drawn from the equilibrium frequencies" = "random",
-                                 "Homozygous: a random sequence on both alleles" = "homozygous")),
+                                 "Homozygous: a random sequence on both alleles" = "homozygous",
+                                 "Homozygous: a custom sequence on both alleles" = "custom")),
+        conditionalPanel("input.snv_origin == 'custom'",
+          textAreaInput("snv_custom_seq", "Sequence at the origin (A, C, G, T)", value = "", rows = 3, placeholder = "ACGTACGT..."),
+          uiOutput("snv_custom_info")),
+        conditionalPanel("input.snv_origin != 'custom'",
+          sliderInput("snv_n_sites", "Number of sites", min = 5, max = 200, value = 40, step = 5)),
         h6("Substitution model"),
         helpText("Exchangeabilities of the six nucleotide pairs (a common scaling has no effect) and equilibrium nucleotide frequencies (rescaled to sum to 1)."),
         fluidRow(column(4, numericInput("snv_r_AC", "AC", value = 1, min = 0, step = 0.5)),
@@ -585,19 +602,23 @@ ui <- page_navbar(
     )
   ),
 
-  # ---------------------------------------------------------------- Simulate methylation
+  # ---------------------------------------------------------------- Simulate binary trait
   nav_panel(
-    "Simulate methylation", value = "methylation",
+    "Simulate binary trait", value = "binary",
     layout_sidebar(
       sidebar = sidebar(
         width = 420,
         h5("Binary sites"),
-        numericInput("bin_seed", "Random seed (methylation)", value = 3, step = 1),
-        sliderInput("bin_n_sites", "Number of sites per sequence", min = 10, max = 500, value = 100, step = 10),
+        numericInput("bin_seed", "Random seed (binary trait)", value = 3, step = 1),
         sliderInput("bin_n_sequences", "Number of independent sequences", min = 1, max = 5, value = 1, step = 1),
         numericInput("bin_lambda", "lambda: rate of 1 -> 0 relative to 0 -> 1", value = 1, min = 0.01, step = 0.1),
         radioButtons("bin_origin", "Sequence at the origin",
-                     choices = c("Drawn from the equilibrium" = "random", "All 0" = "zeros", "All 1" = "ones")),
+                     choices = c("Drawn from the equilibrium" = "random", "All 0" = "zeros", "All 1" = "ones", "Custom" = "custom")),
+        conditionalPanel("input.bin_origin == 'custom'",
+          textAreaInput("bin_custom_seq", "Sequence at the origin (0 and 1)", value = "", rows = 3, placeholder = "0101..."),
+          uiOutput("bin_custom_info")),
+        conditionalPanel("input.bin_origin != 'custom'",
+          sliderInput("bin_n_sites", "Number of sites per sequence", min = 10, max = 500, value = 100, step = 10)),
         hr(),
         h6("Clock"),
         clockUI("bin_clock"),
@@ -609,7 +630,7 @@ ui <- page_navbar(
         h6("Display"),
         checkboxInput("bin_errors", "Mark the errors (false positives and negatives; one sequence only)", value = FALSE),
         checkboxInput("bin_distance", "Draw the distance tree (branch lengths in expected substitutions)", value = FALSE),
-        actionButton("sim_bin", "Simulate methylation", class = "btn-primary"),
+        actionButton("sim_bin", "Simulate binary trait", class = "btn-primary"),
         downloadButton("download_bin", "Download (.rds)")
       ),
       card(card_header("Binary sequences of the cells (black = 1, white = 0)"),
@@ -627,7 +648,7 @@ ui <- page_navbar(
       sidebar = sidebar(
         width = 420,
         h5("Lineage barcodes"),
-        helpText("The barcodes evolve in the time of the tree: the rates below are per unit of time, so they are the clock of this tab. The relaxed clocks and spikes of the mutations and methylation tabs do not apply to barcodes."),
+        helpText("The barcodes evolve in the time of the tree: the rates below are per unit of time, so they are the clock of this tab. The relaxed clocks and spikes of the mutations and binary trait tabs do not apply to barcodes."),
         numericInput("bc_seed", "Random seed (barcodes)", value = 4, step = 1),
         radioButtons("bc_model", "Simulator",
                      choices = c("Sequential editing, SciPhy-like: sim_barcode_seq()" = "seq",
@@ -738,7 +759,9 @@ ui <- page_navbar(
                                 plotOutput("oum_params_plot", height = "380px", fill = FALSE),
                                 plotOutput("thetas_plot", height = "320px", fill = FALSE),
                                 plotOutput("class_plot", height = "320px", fill = FALSE))),
-            nav_panel("UMAP", card_body(fillable = FALSE, plotOutput("expr_umap", height = "650px", fill = FALSE))),
+            nav_panel("UMAP", card_body(fillable = FALSE,
+                                    checkboxInput("umap_tips_only", "Only the tip cells (the sampled cells). Untick it to add the internal nodes and the extinct lineages.", value = TRUE),
+                                    plotOutput("expr_umap", height = "650px", fill = FALSE))),
             nav_panel("Summary", verbatimTextOutput("expr_summary"))
           )
         )
@@ -975,12 +998,27 @@ server <- function(input, output, session) {
 
   snv_clock <- clockServer("snv_clock")
 
+  # what the app understood of the custom sequence at the origin
+  custom_info <- function(x, valid, what) {
+    if (!nzchar(x)) return(helpText("The number of sites is the length of the sequence."))
+    if (!grepl(valid, x)) return(div(class = "text-danger", what))
+    div(class = "text-success", sprintf("%d sites", nchar(x)))
+  }
+  output$snv_custom_info <- renderUI(custom_info(clean_sequence(input$snv_custom_seq), "^[ACGT]+$", "Only A, C, G and T are allowed."))
+  output$bin_custom_info <- renderUI(custom_info(clean_sequence(input$bin_custom_seq, binary = TRUE), "^[01]+$", "Only 0 and 1 are allowed."))
+
   snv_sim <- eventReactive(input$sim_snv, {
     tr <- tree_sim()
     rates <- c(input$snv_r_AC, input$snv_r_AG, input$snv_r_AT, input$snv_r_CG, input$snv_r_CT, input$snv_r_GT)
     pi_raw <- c(input$snv_pi_A, input$snv_pi_C, input$snv_pi_G, input$snv_pi_T)
+    # a custom sequence at the origin: the number of sites is its length
+    custom <- identical(input$snv_origin, "custom")
+    custom_seq <- if (custom) clean_sequence(input$snv_custom_seq)
+    n_sites <- if (custom) nchar(custom_seq) else input$snv_n_sites
     validate(
-      need(!anyNA(c(rates, pi_raw, input$snv_epsilon, input$snv_delta, input$snv_n_sites, input$snv_seed)),
+      need(!custom || grepl("^[ACGT]+$", custom_seq), "The sequence at the origin must be made of A, C, G and T (at least one site)."),
+      need(!custom || nchar(custom_seq) <= MAX_CUSTOM_SITES, sprintf("The sequence at the origin can have at most %s sites.", format(MAX_CUSTOM_SITES, big.mark = ","))),
+      need(!anyNA(c(rates, pi_raw, input$snv_epsilon, input$snv_delta, n_sites, input$snv_seed)),
            "All mutation parameters must be filled in."),
       need(all(rates >= 0) && sum(rates) > 0, "The exchangeabilities must be non-negative and not all zero."),
       need(all(pi_raw > 0), "The nucleotide frequencies must be positive."),
@@ -988,8 +1026,8 @@ server <- function(input, output, session) {
            "epsilon and delta must be probabilities.")
     )
     clock <- snv_clock()
-    code <- snv_code(list(seed = input$snv_seed, clock = clock$code, n_sites = input$snv_n_sites, rates = rates, pi_raw = pi_raw,
-                          origin = input$snv_origin, epsilon = input$snv_epsilon, delta = input$snv_delta))
+    code <- snv_code(list(seed = input$snv_seed, clock = clock$code, n_sites = n_sites, rates = rates, pi_raw = pi_raw,
+                          origin = input$snv_origin, custom_seq = custom_seq, epsilon = input$snv_epsilon, delta = input$snv_delta))
     withProgress(message = "Simulating mutations...", value = 0.5, {
       tryCatch({
         env <- eval_code(code, list(tree = tr))
@@ -1009,14 +1047,19 @@ server <- function(input, output, session) {
   output$snv_summary <- renderText({ need_press("sim_snv", ""); format(summarize_snv(snv_sim()$tree, snv_sim()$snv)) })
   layer_download("download_snv", "sim_snv_", function() layer_ready("sim_snv"), snv_sim, "press 'Simulate mutations' first.")
 
-  # ---- Methylation (binary sites) --------------------------------------------------------------
+  # ---- Binary trait (binary sites) -------------------------------------------------------------
   bin_clock <- clockServer("bin_clock")
 
   bin_sim <- eventReactive(input$sim_bin, {
     tr <- tree_sim()
+    custom <- identical(input$bin_origin, "custom")
+    custom_seq <- if (custom) clean_sequence(input$bin_custom_seq, binary = TRUE)
+    n_sites <- if (custom) nchar(custom_seq) else input$bin_n_sites
     validate(
-      need(!anyNA(c(input$bin_n_sites, input$bin_n_sequences, input$bin_lambda, input$bin_alpha, input$bin_beta, input$bin_seed)),
-           "All methylation parameters must be filled in."),
+      need(!custom || grepl("^[01]+$", custom_seq), "The sequence at the origin must be made of 0 and 1 (at least one site)."),
+      need(!custom || nchar(custom_seq) <= MAX_CUSTOM_SITES, sprintf("The sequence at the origin can have at most %s sites.", format(MAX_CUSTOM_SITES, big.mark = ","))),
+      need(!anyNA(c(n_sites, input$bin_n_sequences, input$bin_lambda, input$bin_alpha, input$bin_beta, input$bin_seed)),
+           "All binary trait parameters must be filled in."),
       need(input$bin_lambda > 0, "lambda must be positive."),
       need(input$bin_alpha >= 0 && input$bin_alpha <= 1 && input$bin_beta >= 0 && input$bin_beta <= 1,
            "alpha and beta must be probabilities.")
@@ -1024,26 +1067,26 @@ server <- function(input, output, session) {
     clock <- bin_clock()
     # the true sequence can only be recovered for one sequence: with several, the error draws of one sequence shift the
     # random numbers of the next
-    code <- bin_code(list(seed = input$bin_seed, clock = clock$code, n_sites = input$bin_n_sites,
-                          n_sequences = input$bin_n_sequences, lambda = input$bin_lambda, origin = input$bin_origin,
+    code <- bin_code(list(seed = input$bin_seed, clock = clock$code, n_sites = n_sites,
+                          n_sequences = input$bin_n_sequences, lambda = input$bin_lambda, origin = input$bin_origin, custom_seq = custom_seq,
                           alpha = input$bin_alpha, beta = input$bin_beta))
-    withProgress(message = "Simulating methylation...", value = 0.5, {
+    withProgress(message = "Simulating the binary trait...", value = 0.5, {
       tryCatch({
         env <- eval_code(code, list(tree = tr))
         list(tree = env$ct, bin = env$bin, true = env$bin_true, code = code)
-      }, error = function(e) fail("The methylation simulation", e))
+      }, error = function(e) fail("The binary trait simulation", e))
     })
   })
 
   output$bin_note <- subsample_notice(tree_sim)
   output$bin_plot <- renderPlot({
-    need_press("sim_bin", "Press 'Simulate methylation' to simulate binary sites on the tree.")
+    need_press("sim_bin", "Press 'Simulate binary trait' to simulate binary sites on the tree.")
     s <- bin_sim()
     plot_sim_binary(s$tree, s$bin, errors = if (isTRUE(input$bin_errors)) s$true, distance = isTRUE(input$bin_distance))
   }, height = layer_plot_height(tree_sim, per_tip = 8))
 
   output$bin_summary <- renderText({ need_press("sim_bin", ""); { b <- bin_sim(); format(summarize_binary(b$tree, b$bin, b$true)) } })
-  layer_download("download_bin", "sim_methylation_", function() layer_ready("sim_bin"), bin_sim, "press 'Simulate methylation' first.")
+  layer_download("download_bin", "sim_binary_trait_", function() layer_ready("sim_bin"), bin_sim, "press 'Simulate binary trait' first.")
 
   # ---- Barcodes -------------------------------------------------------------------------------
   # the multipliers of the editing rate of the types of the tree (default: 1 for type 0, 2 for the others)
@@ -1201,7 +1244,8 @@ server <- function(input, output, session) {
   output$expr_umap <- renderPlot({
     need_press("sim_expr", "Press 'Simulate expression' to simulate the expression of the genes on the tree.")
     es <- expr_sim()
-    withProgress(message = "Computing the UMAP...", value = 0.5, plot_sim_umap(es$expr, es$tree))
+    withProgress(message = "Computing the UMAP...", value = 0.5,
+                 plot_sim_umap(es$expr, es$tree, tips_only = !identical(input$umap_tips_only, FALSE)))
   })
 
   output$expr_summary <- renderText({
@@ -1274,7 +1318,7 @@ server <- function(input, output, session) {
   # everything disabled (see the header of the UI); here the server enables and disables the tabs and the buttons.
   observe({
     has_tree <- !is.null(tryCatch(tree_run()$tree, error = function(e) NULL))
-    session$sendCustomMessage("set_disabled", list(tabs = c("mutations", "methylation", "barcodes", "expression"),
+    session$sendCustomMessage("set_disabled", list(tabs = c("mutations", "binary", "barcodes", "expression"),
                                                    buttons = c("download_script", "download_all"), disabled = !has_tree))
   })
   observe({
@@ -1305,7 +1349,7 @@ server <- function(input, output, session) {
       'RNGkind("Mersenne-Twister", "Inversion", "Rejection")  # the random number generator of the app',
       "")
     paste(c(header, "# ---- 1. Tree ----", tree$code, "",
-            layer("sim_snv", "2. Mutations", snv_sim), layer("sim_bin", "3. Methylation", bin_sim),
+            layer("sim_snv", "2. Mutations", snv_sim), layer("sim_bin", "3. Binary trait", bin_sim),
             layer("sim_bc", "4. Barcodes", bc_sim), layer("sim_expr", "5. Expression", expr_sim),
             layer("sim_counts", "6. Counts", counts_sim)), collapse = "\n")
   }
@@ -1323,7 +1367,7 @@ server <- function(input, output, session) {
   # ---- All results ------------------------------------------------------------------------------
   # one .rds with a list: the tree and the result of every layer that has been simulated (NULL for the others), the
   # true parameters of the expression and the counts as tables (also inside the results), and the script.
-  # Every layer keeps the tree it was simulated on (with the clock distances for mutations and methylation).
+  # Every layer keeps the tree it was simulated on (with the clock distances for mutations and the binary trait).
   output$download_all <- downloadHandler(
     filename = function() paste0("sim_all_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".rds"),
     content = function(file) {
@@ -1332,7 +1376,7 @@ server <- function(input, output, session) {
       counts <- result("sim_counts", counts_sim)
       saveRDS(list(tree = tryCatch(tree_sim(), error = function(e) NULL),
                    mutations = result("sim_snv", snv_sim),
-                   methylation = result("sim_bin", bin_sim),
+                   binary_trait = result("sim_bin", bin_sim),
                    barcodes = result("sim_bc", bc_sim),
                    expression = expression,
                    counts = counts,

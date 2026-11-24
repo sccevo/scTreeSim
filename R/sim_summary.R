@@ -26,7 +26,7 @@ format.sim_summary <- function(x, ...) {
 #'
 #' @param tree a treedata object, from \code{\link{sim_adb_ntaxa_samp}} or
 #'   \code{\link{sim_adb_origin_samp}} (with the distances of a clock for the
-#'   mutations and the methylation: see \code{\link{clock_tree}})
+#'   mutations and the binary trait: see \code{\link{clock_tree}})
 #' @param snv the output of \code{\link{sim_gt16_nt_diploid}}: a list with the data
 #'   frames \code{true} and \code{observed}, in either format
 #' @param bin the output of \code{\link{sim_binary}}

@@ -7,6 +7,7 @@
 plot_sim_umap(
   expr,
   tree,
+  tips_only = TRUE,
   n_neighbors = 15,
   n_pcs = 50,
   max_genes = 2000,
@@ -18,8 +19,11 @@ plot_sim_umap(
 \item{expr}{the output of \code{\link{sim_expression_matrix}}: a data frame with the
 columns \code{node}, \code{type} and one column per gene}
 
-\item{tree}{the treedata object the expression was simulated on; its sampled tips
-(\code{status == 1}) are the cells}
+\item{tree}{the treedata object the expression was simulated on}
+
+\item{tips_only}{if TRUE (default), only the tip cells: the sampled tips
+(\code{status == 1}). If FALSE, every node of the tree: the sampled tips, the extinct
+tips and the internal nodes.}
 
 \item{n_neighbors}{number of neighbours of UMAP (at most the number of cells minus 1)}
 
@@ -35,15 +39,18 @@ subset is used}
 }
 \value{
 a ggplot object; its \code{data} has the coordinates (\code{UMAP1},
-\code{UMAP2}), the \code{cell} and its \code{type}
+\code{UMAP2}), the \code{cell} (the label of a tip, or \code{node_<id>}), its
+\code{type} and its \code{kind} (sampled tip, extinct tip or internal node)
 }
 \description{
-Embeds the cells (the sampled tips of the tree) in two dimensions with UMAP
-(\code{uwot::umap}), from their latent expression simulated by
-\code{\link{sim_expression_matrix}}, and draws one point per cell, coloured by its
-cell type (the \code{type} of the tip in the tree). The embedding uses random numbers:
-the same \code{seed} gives the same plot, and the random number generator of the
-session is restored afterwards.
+Embeds the cells in two dimensions with UMAP (\code{uwot::umap}), from their latent
+expression simulated by \code{\link{sim_expression_matrix}}, and draws one point per
+cell, coloured by its cell type (the \code{type} of the node in the tree). By default
+the cells are the sampled tips of the tree. With \code{tips_only = FALSE} the
+embedding also includes the cells that are not observed: the extinct lineages and
+the internal nodes (the ancestors), drawn with other point shapes. The embedding uses
+random numbers: the same \code{seed} gives the same plot, and the random number
+generator of the session is restored afterwards.
 }
 \examples{
 \donttest{
@@ -55,6 +62,9 @@ genes <- sim_gene_params(tree, n_genes = 50, pi_ou = 1)
 expr <- sim_expression_matrix(tree, alpha = genes$alpha, sigmasq = genes$sigma2,
                               root_value = genes$x_root, theta = gene_optima(genes),
                               gene_names = genes$gene)
-if (requireNamespace("uwot", quietly = TRUE)) plot_sim_umap(expr, tree)
+if (requireNamespace("uwot", quietly = TRUE)) {
+  plot_sim_umap(expr, tree)
+  plot_sim_umap(expr, tree, tips_only = FALSE)
+}
 }
 }

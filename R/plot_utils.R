@@ -349,17 +349,21 @@ plot_sim_expression <- function(expr, tree, truth = NULL, max_genes = 200, gap =
 
 #' UMAP of the cells, coloured by cell type
 #'
-#' Embeds the cells (the sampled tips of the tree) in two dimensions with UMAP
-#' (\code{uwot::umap}), from their latent expression simulated by
-#' \code{\link{sim_expression_matrix}}, and draws one point per cell, coloured by its
-#' cell type (the \code{type} of the tip in the tree). The embedding uses random numbers:
-#' the same \code{seed} gives the same plot, and the random number generator of the
-#' session is restored afterwards.
+#' Embeds the cells in two dimensions with UMAP (\code{uwot::umap}), from their latent
+#' expression simulated by \code{\link{sim_expression_matrix}}, and draws one point per
+#' cell, coloured by its cell type (the \code{type} of the node in the tree). By default
+#' the cells are the sampled tips of the tree. With \code{tips_only = FALSE} the
+#' embedding also includes the cells that are not observed: the extinct lineages and
+#' the internal nodes (the ancestors), drawn with other point shapes. The embedding uses
+#' random numbers: the same \code{seed} gives the same plot, and the random number
+#' generator of the session is restored afterwards.
 #'
 #' @param expr the output of \code{\link{sim_expression_matrix}}: a data frame with the
 #'   columns \code{node}, \code{type} and one column per gene
-#' @param tree the treedata object the expression was simulated on; its sampled tips
-#'   (\code{status == 1}) are the cells
+#' @param tree the treedata object the expression was simulated on
+#' @param tips_only if TRUE (default), only the tip cells: the sampled tips
+#'   (\code{status == 1}). If FALSE, every node of the tree: the sampled tips, the extinct
+#'   tips and the internal nodes.
 #' @param n_neighbors number of neighbours of UMAP (at most the number of cells minus 1)
 #' @param n_pcs number of principal components that UMAP starts from; if there are
 #'   fewer genes, it uses the genes
@@ -369,7 +373,8 @@ plot_sim_expression <- function(expr, tree, truth = NULL, max_genes = 200, gap =
 #' @param point_size size of the points
 #'
 #' @return a ggplot object; its \code{data} has the coordinates (\code{UMAP1},
-#'   \code{UMAP2}), the \code{cell} and its \code{type}
+#'   \code{UMAP2}), the \code{cell} (the label of a tip, or \code{node_<id>}), its
+#'   \code{type} and its \code{kind} (sampled tip, extinct tip or internal node)
 #' @examples
 #' \donttest{
 #' set.seed(1)
@@ -380,34 +385,56 @@ plot_sim_expression <- function(expr, tree, truth = NULL, max_genes = 200, gap =
 #' expr <- sim_expression_matrix(tree, alpha = genes$alpha, sigmasq = genes$sigma2,
 #'                               root_value = genes$x_root, theta = gene_optima(genes),
 #'                               gene_names = genes$gene)
-#' if (requireNamespace("uwot", quietly = TRUE)) plot_sim_umap(expr, tree)
+#' if (requireNamespace("uwot", quietly = TRUE)) {
+#'   plot_sim_umap(expr, tree)
+#'   plot_sim_umap(expr, tree, tips_only = FALSE)
+#' }
 #' }
 #' @export
-plot_sim_umap <- function(expr, tree, n_neighbors = 15, n_pcs = 50, max_genes = 2000, seed = 1, point_size = 1) {
+plot_sim_umap <- function(expr, tree, tips_only = TRUE, n_neighbors = 15, n_pcs = 50, max_genes = 2000, seed = 1,
+                          point_size = 1) {
   .require_pkgs(c("ggplot2", "uwot"))
   stopifnot(methods::is(tree, "treedata"), is.data.frame(expr), all(c("node", "type") %in% names(expr)))
   gene_cols <- setdiff(names(expr), c("node", "type"))
-  tips <- tree@data$node[tree@data$status == 1]
+  nodes <- if (tips_only) tree@data$node[tree@data$status == 1] else tree@data$node
   if (length(gene_cols) < 2) stop("`expr` needs at least 2 genes for a UMAP.", call. = FALSE)
-  if (length(tips) < 3) stop("A UMAP needs at least 3 cells.", call. = FALSE)
-  if (!all(tips %in% expr$node)) stop("`expr` has no row for some tips of `tree`; was it simulated on this tree?", call. = FALSE)
+  if (length(nodes) < 3) stop("A UMAP needs at least 3 cells.", call. = FALSE)
+  if (!all(nodes %in% expr$node)) stop("`expr` has no row for some nodes of `tree`; was it simulated on this tree?", call. = FALSE)
   genes <- if (length(gene_cols) > max_genes) {
     gene_cols[unique(round(seq(1, length(gene_cols), length.out = max_genes)))]
   } else {
     gene_cols
   }
-  m <- as.matrix(expr[match(tips, expr$node), genes, drop = FALSE])
-  rownames(m) <- tree@phylo$tip.label[tips]
+  m <- as.matrix(expr[match(nodes, expr$node), genes, drop = FALSE])
+  n_tip <- ape::Ntip(tree@phylo)
+  cell <- ifelse(nodes <= n_tip, tree@phylo$tip.label[pmin(nodes, n_tip)], paste0("node_", nodes))
+  rownames(m) <- cell
   coords <- .with_seed(seed, uwot::umap(m, n_neighbors = min(n_neighbors, nrow(m) - 1),
                                         pca = if (ncol(m) > n_pcs) n_pcs else NULL, seed = seed, n_threads = 1))
-  type <- tree@data$type[match(tips, tree@data$node)]
-  df <- data.frame(UMAP1 = coords[, 1], UMAP2 = coords[, 2], cell = rownames(m),
-                   type = factor(type, levels = sort(unique(tree@data$type))))
-  ggplot2::ggplot(df, ggplot2::aes(x = .data$UMAP1, y = .data$UMAP2, color = .data$type)) +
-    ggplot2::geom_point(size = point_size) +
-    ggplot2::scale_color_manual(values = .type_colours(levels(df$type)), name = "cell type", drop = FALSE) +
-    ggplot2::labs(caption = sprintf("UMAP of %d cells from the expression of %s%d genes", nrow(m),
-                                    if (length(genes) < length(gene_cols)) "a subset of " else "", length(genes))) +
+  status <- tree@data$status[match(nodes, tree@data$node)]
+  kinds <- c("sampled tip", "extinct tip", "internal node")
+  kind <- factor(kinds[c(`1` = 1L, `0` = 2L, `2` = 3L)[as.character(status)]], levels = kinds)
+  df <- data.frame(UMAP1 = coords[, 1], UMAP2 = coords[, 2], cell = cell,
+                   type = factor(tree@data$type[match(nodes, tree@data$node)], levels = sort(unique(tree@data$type))),
+                   kind = kind)
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$UMAP1, y = .data$UMAP2, color = .data$type)) +
+    ggplot2::scale_color_manual(values = .type_colours(levels(df$type)), name = "cell type", drop = FALSE)
+  if (tips_only) {
+    p <- p + ggplot2::geom_point(size = point_size)
+  } else {
+    p <- p +
+      ggplot2::geom_point(ggplot2::aes(shape = .data$kind), size = point_size) +
+      ggplot2::scale_shape_manual(values = c("sampled tip" = 16, "extinct tip" = 4, "internal node" = 1), name = NULL, drop = TRUE)
+  }
+  n_genes <- sprintf("%s%d genes", if (length(genes) < length(gene_cols)) "a subset of " else "", length(genes))
+  caption <- if (tips_only) {
+    sprintf("UMAP of %d cells (the sampled tips) from the expression of %s", nrow(m), n_genes)
+  } else {
+    sprintf("UMAP of %d cells (%d sampled tips, %d extinct tips and %d internal nodes) from the expression of %s",
+            nrow(m), sum(kind == "sampled tip"), sum(kind == "extinct tip"), sum(kind == "internal node"), n_genes)
+  }
+  p +
+    ggplot2::labs(caption = caption) +
     ggplot2::theme(panel.background = ggplot2::element_blank(), legend.position = "top",
                    panel.border = ggplot2::element_rect(fill = NA, color = "grey60"))
 }
@@ -585,7 +612,7 @@ plot_sim_sizes_panel <- function(plots) {
 }
 
 
-# ---- trees with the data of the layers (mutations, methylation, barcodes) ----
+# ---- trees with the data of the layers (mutations, binary trait, barcodes) ----
 
 # colours of the heatmaps
 .nucleotide_cols <- c(A = "#009E73", C = "#0072B2", G = "#F0E442", T = "#D55E00")

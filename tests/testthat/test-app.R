@@ -137,6 +137,44 @@ test_that("nothing is simulated until the user asks for a tree, and cells x gene
   })
 })
 
+test_that("a custom sequence at the origin is used by the mutations and by the binary trait", {
+  skip_if_no_app()
+  skip_on_cran()
+  shiny::testServer(shiny::shinyAppFile(app_file()), {
+    set_tree(session, n_types = 2)
+    set_layers(session)
+    # without evolution (a clock of rate 0) every node keeps the sequence of the origin
+    session$setInputs("snv_clock-rate" = 0, snv_epsilon = 0, snv_delta = 0,
+                      snv_origin = "custom", snv_custom_seq = " acgt\nacgt ac ", sim_snv = 1)
+    snv <- snv_sim()
+    expect_match(snv$code, 'x <- "ACGTACGTAC"', fixed = TRUE)
+    expect_match(snv$code, "n_sites = 10", fixed = TRUE)
+    expect_equal(unique(snv$snv$true$genotype), "AA_CC_GG_TT_AA_CC_GG_TT_AA_CC")
+    session$setInputs("bin_clock-type" = "strict", "bin_clock-spike" = FALSE, "bin_clock-rate" = 0,
+                      bin_alpha = 0, bin_beta = 0, bin_origin = "custom", bin_custom_seq = "0101, 1100", sim_bin = 1)
+    bin <- bin_sim()
+    expect_match(bin$code, 'as.integer(strsplit("01011100", "")[[1]])', fixed = TRUE)
+    expect_equal(unique(bin$bin$binary_1), "01011100")
+    # the script gives the same
+    env <- new.env()
+    eval(parse(text = script_text()), env)
+    expect_identical(env$snv, snv$snv)
+    expect_identical(env$bin, bin$bin)
+    # other origins still work, and an invalid sequence is refused
+    session$setInputs(snv_origin = "homozygous", snv_n_sites = 8, sim_snv = 2)
+    expect_equal(nchar(strsplit(snv_sim()$snv$true$genotype[1], "_")[[1]][1]), 2)
+    expect_length(strsplit(snv_sim()$snv$true$genotype[1], "_")[[1]], 8)
+    session$setInputs(snv_origin = "custom", snv_custom_seq = "ACGX", sim_snv = 3)
+    expect_error(snv_sim(), class = "shiny.silent.error")
+    session$setInputs(snv_custom_seq = "", sim_snv = 4)
+    expect_error(snv_sim(), class = "shiny.silent.error")
+    session$setInputs(bin_custom_seq = "01021", sim_bin = 2)
+    expect_error(bin_sim(), class = "shiny.silent.error")
+    session$setInputs(bin_custom_seq = strrep("01", 600), sim_bin = 3)   # more than the largest number of sites
+    expect_error(bin_sim(), class = "shiny.silent.error")
+  })
+})
+
 test_that("a new tree sends the layers back to the state in which nothing has been simulated", {
   skip_if_no_app()
   skip_on_cran()

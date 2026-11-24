@@ -17,7 +17,7 @@ Called for its side effect of running the app; returns the value of
 \description{
 Opens a graphical interface to simulate a tree and, on top of it, the layers
 of data of this package, using its simulation functions: SNV mutations
-(\code{\link{sim_gt16_nt_diploid}}), binary methylation
+(\code{\link{sim_gt16_nt_diploid}}), a binary trait such as methylation
 (\code{\link{sim_binary}}), lineage barcodes
 (\code{\link{sim_barcode_seq}}, \code{\link{sim_barcode_nonseq}} and
 \code{\link{sim_barcode_generic}}), the expression of many genes

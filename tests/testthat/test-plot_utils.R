@@ -449,6 +449,33 @@ test_that("plot_sim_umap draws one point per cell, coloured by cell type, and is
   expect_false(isTRUE(all.equal(plot_sim_umap(expr, tree, seed = 2)$data$UMAP1, p$data$UMAP1)))
   set.seed(5); a <- stats::runif(1)
   set.seed(5); plot_sim_umap(expr, tree); expect_equal(stats::runif(1), a)   # the session's random numbers are not touched
+  expect_equal(levels(p$data$kind), c("sampled tip", "extinct tip", "internal node"))
+  expect_true(all(p$data$kind == "sampled tip"))               # by default only the tip cells
   expect_error(plot_sim_umap(expr[1:3], tree), "at least 2 genes")
   expect_no_error(plot_sim_umap(expr, tree, max_genes = 5))
+})
+
+test_that("plot_sim_umap can include the internal nodes and the extinct tips, marked by kind", {
+  skip_if_not_installed("uwot")
+  tree <- make_tree3(40)
+  set.seed(1)
+  genes <- sim_gene_params(tree, n_genes = 30, pi_ou = 1)
+  expr <- sim_expression_matrix(tree, alpha = genes$alpha, sigmasq = genes$sigma2, root_value = genes$x_root,
+                                theta = gene_optima(genes), gene_names = genes$gene)
+  all_nodes <- plot_sim_umap(expr, tree, tips_only = FALSE)
+  expect_equal(nrow(all_nodes$data), nrow(tree@data))
+  expect_equal(sum(all_nodes$data$kind == "internal node"), sum(tree@data$status == 2))
+  expect_equal(sum(all_nodes$data$kind == "sampled tip"), sum(tree@data$status == 1))
+  expect_equal(sum(all_nodes$data$kind == "extinct tip"), sum(tree@data$status == 0))
+  expect_true(all(grepl("^node_", all_nodes$data$cell[all_nodes$data$kind == "internal node"])))
+  expect_no_error(ggplot2::ggplot_build(all_nodes))
+  expect_match(ggplot2::get_labs(all_nodes)$caption, "internal nodes")
+  # only the tips: the sampled tips, as before
+  tips <- plot_sim_umap(expr, tree)
+  expect_equal(nrow(tips$data), sum(tree@data$status == 1))
+  expect_match(ggplot2::get_labs(tips)$caption, "the sampled tips")
+  # the types of the internal nodes are those of the tree
+  internal <- all_nodes$data[all_nodes$data$kind == "internal node", ]
+  ids <- as.integer(sub("node_", "", internal$cell))
+  expect_equal(as.character(internal$type), as.character(tree@data$type[match(ids, tree@data$node)]))
 })
