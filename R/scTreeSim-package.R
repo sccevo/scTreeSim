@@ -6,5 +6,6 @@
 #' @importFrom Rcpp sourceCpp
 #' @importFrom magrittr "%>%"
 #' @importFrom stats rgamma runif
+#' @importFrom rlang .data
 ## usethis namespace: end
 NULL

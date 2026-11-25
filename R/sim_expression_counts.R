@@ -123,13 +123,14 @@ sim_expression_counts_matrix <- function(expr_matrix, tree, phi, size_factor = N
          call. = FALSE)
   }
 
-  result <- tips[, c("node", "type")]
-  for (g in seq_along(gene_cols)) {
+  # one call per gene; the columns are put together once at the end (adding
+  # them one at a time to a data frame gets slow for many genes)
+  counts <- lapply(seq_along(gene_cols), function(g) {
     x <- stats::setNames(tips[[gene_cols[g]]], as.character(tips$node))
-    result[[gene_cols[g]]] <- unname(sim_expression_counts(x,
-                                                           phi = phi[g],
-                                                           size_factor = size_factor))
-  }
+    unname(sim_expression_counts(x, phi = phi[g], size_factor = size_factor))
+  })
+  names(counts) <- gene_cols
+  result <- data.frame(node = tips$node, type = tips$type, counts, check.names = FALSE)
   rownames(result) <- NULL
 
   return(result)

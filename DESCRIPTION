@@ -1,7 +1,7 @@
 Package: scTreeSim
 Title: Simulation of single-cell lineage trees & associated data
 Version: 0.1.1
-Authors@R: 
+Authors@R:
     person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
 Description: Simulates single-cell lineage trees under an Age-Dependent Branching process, with optional multi-type dynamics, and layers multi-modal data on top of a fixed tree: gene expression (Ornstein-Uhlenbeck), sequential (TypeWriter-style) and non-sequential (Edit-and-Silencing / TiDeTree-style) barcodes, and a binary trait model with error and division-triggered mutation spikes.
 License: usethis::use_mit_license()
@@ -12,25 +12,33 @@ Depends:
 Imports:
     ape,
     dplyr,
+    grDevices,
     magrittr,
     methods,
     processx,
     Rcpp,
+    rlang,
     stats,
     tibble,
     treeio,
     TreeSim
 Suggests:
+    bslib,
     ggplot2,
+    ggpubr,
     ggtree,
     jsonlite,
     knitr,
     patchwork,
     phangorn,
     rmarkdown,
+    shiny,
     testthat (>= 3.0.0),
     withr,
     yaml
+    uwot,
+    viridis,
+    withr
 VignetteBuilder: knitr
 LinkingTo: Rcpp
 Config/testthat/edition: 3
