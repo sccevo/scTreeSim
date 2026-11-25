@@ -107,8 +107,14 @@ sim_expression_ou <- function(tree,
 
 #' Ornstein-Uhlenbeck Model for the expression of multiple genes along a tree
 #'
-#' Wrapper around \code{\link{sim_expression_ou}} that simulates several genes
-#' independently on the same tree, each with its own OU parameters.
+#' Simulates several genes independently on the same tree, each with its own
+#' OU parameters. It is the model of \code{\link{sim_expression_ou}}, simulated
+#' for all the genes at once: the tree is traversed a single time and the genes
+#' are handled as columns of a matrix, which is much faster than calling
+#' \code{\link{sim_expression_ou}} once per gene. The random numbers are drawn
+#' in a different order, so for a given seed the values are not the same as
+#' those of \code{\link{sim_expression_ou}}, but they follow the same
+#' distribution.
 #'
 #' The OU parameters \code{alpha}, \code{sigmasq}, \code{root_value} and
 #' \code{theta}, and the optional \code{gene_names}, give one value per gene.
@@ -235,26 +241,63 @@ sim_expression_matrix <- function(tree,
   root_value <- rep_len(root_value, n_genes)
   gene_cols <- rep_len(gene_cols, n_genes)
 
-  per_gene <- lapply(seq_len(n_genes), function(g) {
-    sim_expression_ou(tree,
-                      alpha = alpha[g],
-                      sigmasq = sigmasq[g],
-                      root_value = root_value[g],
-                      theta = data.frame(type = theta$type,
-                                         theta = theta[[gene_cols[g]]]))
-  })
+  # tree table (one row per node), in the same order as sim_expression_ou
+  nodes <- tree %>% tibble::as_tibble() %>% as.data.frame()
+  root <- nodes$node[nodes$parent == nodes$node]
 
-  # sim_expression_ou returns NULL (with a message) on invalid theta
-  if (any(vapply(per_gene, is.null, logical(1)))) {
+  # every type present in the tree needs a matching optimum (as in sim_expression_ou)
+  tree_types <- unique(tree@data$type)
+  if (!all(tree_types %in% theta$type)) {
+    missing_types <- setdiff(tree_types, theta$type)
+    message(
+      "Error: theta is missing an entry for type(s): ",
+      paste(missing_types, collapse = ", "),
+      ". Provide theta as a data frame with a column 'type' covering every ",
+      "type present in tree@data$type."
+    )
     return(NULL)
   }
 
-  # same tree for every gene, so node and type are shared; keep them once
-  # and add one column per gene
-  result <- per_gene[[1]][, c("node", "type")]
-  for (g in seq_len(n_genes)) {
-    result[[gene_names[g]]] <- per_gene[[g]]$expr
+  n_nodes <- nrow(nodes)
+  parent_idx <- match(nodes$parent, nodes$node)
+  is_root <- nodes$node == root
+  theta_mat <- as.matrix(theta[gene_cols])[match(nodes$type, theta$type), , drop = FALSE]
+
+  # level of each node (number of branches from the root), so that all nodes of
+  # a level can be updated at once, for every gene
+  level <- rep(NA_integer_, n_nodes)
+  level[is_root] <- 0L
+  while (anyNA(level)) {
+    level <- ifelse(is.na(level) & !is.na(level[parent_idx]), level[parent_idx] + 1L, level)
   }
+
+  # noise of the incoming branch of every node and gene: N(0, sd^2) with
+  # sd^2 = sigmasq * (1 - exp(-2 alpha t)) / (2 alpha), or sigmasq * t for
+  # alpha = 0 (Brownian motion). alpha = 0 is replaced by 1 in the OU formula
+  # to avoid 0/0; those entries are overwritten by the Brownian one
+  bl <- nodes$branch.length
+  bl[is_root] <- 0
+  alpha_mat <- matrix(alpha, n_nodes, n_genes, byrow = TRUE)
+  sigmasq_mat <- matrix(sigmasq, n_nodes, n_genes, byrow = TRUE)
+  alpha_safe <- ifelse(alpha_mat == 0, 1, alpha_mat)
+  var_ou <- sigmasq_mat * (1 - exp(-2 * alpha_safe * bl)) / (2 * alpha_safe)
+  noise_var <- ifelse(alpha_mat == 0, sigmasq_mat * bl, var_ou)
+  noise <- matrix(stats::rnorm(n_nodes * n_genes), n_nodes, n_genes) * sqrt(noise_var)
+
+  # propagate expression from the root, level by level: the value of a node is
+  # the OU transition from its parent's value over the branch, plus its noise
+  expr <- matrix(NA_real_, n_nodes, n_genes)
+  expr[is_root, ] <- matrix(root_value, 1, n_genes)
+  for (lv in seq_len(max(level))) {
+    idx <- which(level == lv)
+    decay <- exp(-outer(bl[idx], alpha))
+    expr[idx, ] <- theta_mat[idx, , drop = FALSE] +
+      (expr[parent_idx[idx], , drop = FALSE] - theta_mat[idx, , drop = FALSE]) * decay +
+      noise[idx, , drop = FALSE]
+  }
+  colnames(expr) <- gene_names
+
+  result <- data.frame(node = nodes$node, type = nodes$type, expr, check.names = FALSE)
 
   return(result)
 }

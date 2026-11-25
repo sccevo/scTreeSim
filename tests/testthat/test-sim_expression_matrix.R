@@ -109,16 +109,52 @@ test_that("each gene uses its own parameters and matches sim_expression_ou", {
                                root_value = c(0, 5), theta = th)
   expect_equal(res[["2"]], rep(5, nrow(res)), tolerance = 1e-4)
 
-  # a single gene reproduces sim_expression_ou for the same seed
-  set.seed(7)
+  # node and type match the rows of sim_expression_ou
   single <- sim_expression_ou(tree, alpha = 0.5, sigmasq = 0.2, root_value = 1,
                               theta = data.frame(type = types, theta = 2))
-  set.seed(7)
   multi <- sim_expression_matrix(tree, alpha = 0.5, sigmasq = 0.2, root_value = 1,
                                  theta = data.frame(type = types, theta = 2))
   expect_equal(multi$node, single$node)
   expect_equal(multi$type, single$type)
-  expect_equal(multi[["1"]], single$expr)
+  expect_equal(colnames(multi), c("node", "type", "1"))
+})
+
+test_that("expression has the OU mean and variance at the tips", {
+  # single type, so the moments are known: x_T ~ N(theta + (x0 - theta) e^{-alpha T},
+  # sigma2 (1 - e^{-2 alpha T}) / (2 alpha)), T = distance from the root
+  set.seed(11)
+  tree <- sim_adb_ntaxa_samp(ntaxa = 6, shape = 2, mean_lifetime = 1)
+  th <- data.frame(type = 0L, theta = 3)
+  n <- 20000
+  depth <- ape::node.depth.edgelength(tree@phylo)
+  tip <- 1
+
+  for (alpha in c(0.7, 0)) {
+    sigmasq <- 0.5
+    res <- sim_expression_matrix(tree, alpha = alpha, sigmasq = sigmasq, root_value = 1,
+                                 theta = th, n_genes = n)
+    x <- unlist(res[res$node == tip, -(1:2)], use.names = FALSE)
+    if (alpha == 0) {
+      expect_equal(mean(x), 1, tolerance = 0.05)
+      expect_equal(stats::var(x), sigmasq * depth[tip], tolerance = 0.05)
+    } else {
+      expect_equal(mean(x), 3 + (1 - 3) * exp(-alpha * depth[tip]), tolerance = 0.05)
+      expect_equal(stats::var(x), sigmasq * (1 - exp(-2 * alpha * depth[tip])) / (2 * alpha),
+                   tolerance = 0.05)
+    }
+  }
+})
+
+test_that("every gene starts at its root value, and Brownian genes (alpha = 0) give no warnings", {
+  tree <- make_tree()
+  expect_no_warning(res <- sim_expression_matrix(tree, alpha = c(0, 0.5, 0), sigmasq = 1,
+                                                 root_value = c(1, 2, 3),
+                                                 theta = theta_shared(tree)))
+  expect_false(anyNA(res))
+  root <- which.min(ape::node.depth.edgelength(tree@phylo))
+  expect_equal(unlist(res[res$node == root, c("1", "2", "3")], use.names = FALSE), c(1, 2, 3))
+  # genes are simulated independently
+  expect_lt(abs(stats::cor(res[["1"]], res[["3"]])), 0.95)
 })
 
 test_that("type-specific optima are applied per gene", {

@@ -49,8 +49,14 @@ named by \code{gene_names}, or by gene id (\code{1}, ..., \code{N}) by
 default.
 }
 \description{
-Wrapper around \code{\link{sim_expression_ou}} that simulates several genes
-independently on the same tree, each with its own OU parameters.
+Simulates several genes independently on the same tree, each with its own
+OU parameters. It is the model of \code{\link{sim_expression_ou}}, simulated
+for all the genes at once: the tree is traversed a single time and the genes
+are handled as columns of a matrix, which is much faster than calling
+\code{\link{sim_expression_ou}} once per gene. The random numbers are drawn
+in a different order, so for a given seed the values are not the same as
+those of \code{\link{sim_expression_ou}}, but they follow the same
+distribution.
 }
 \details{
 The OU parameters \code{alpha}, \code{sigmasq}, \code{root_value} and

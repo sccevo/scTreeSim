@@ -179,6 +179,37 @@ expr_mat <- sim_expression_matrix(mt_tree, alpha = c(0.5, 0.5, 1), sigmasq = 0.2
 head(expr_mat)
 ```
 
+## Many genes, with parameters drawn from priors
+
+To simulate hundreds of genes, `sim_gene_params()` draws the parameters of every gene from priors
+(`sim_prior()`): each gene is a Brownian motion (`alpha = 0`) or an OU process, whose optima in the types
+are separated by `eta`. It returns the table of true parameters, one row per gene, and does not set the seed:
+call `set.seed()` first to get the same genes again. `gene_optima()` arranges the optima as the `theta` of
+`sim_expression_matrix()`. To specify the parameters yourself, `gene_params_from_table()` builds the same table
+from a data frame with the columns `alpha`, `sigma2` and `theta_0`, `theta_1`, ...
+
+```{r}
+set.seed(4)
+genes <- sim_gene_params(mt_tree, n_genes = 6, n_types = 2, pi_ou = 0.5,
+                         alpha = sim_prior("exponential", rate = 1, lower = 0.1),
+                         eta = sim_prior("exponential", rate = 1))
+genes[c("gene", "class_eff", "alpha", "sigma2", "theta_0", "theta_1")]
+
+expr_genes <- sim_expression_matrix(mt_tree, alpha = genes$alpha, sigmasq = genes$sigma2,
+                                    root_value = genes$x_root, theta = gene_optima(genes),
+                                    gene_names = genes$gene)
+```
+
+`summarize_expression()` reports quick sanity checks of the genes (and `summarize_tree()`, `summarize_snv()`,
+`summarize_binary()`, `summarize_barcodes()` and `summarize_counts()` those of the other layers; they return the
+numbers, and `print()` shows them as text). `plot_sim_umap()` embeds the cells from their latent expression with UMAP
+and colours them by cell type; it needs the package `uwot`, and takes a `seed`, as UMAP uses random numbers.
+
+```{r, eval = requireNamespace("uwot", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE)}
+summarize_expression(expr_genes, mt_tree, genes)
+plot_sim_umap(expr_genes, mt_tree, seed = 1)
+```
+
 # Single-cell gene expression counts
 
 `sim_expression_counts_matrix()` turns the expression values at the tips into counts, one
@@ -199,6 +230,17 @@ tips <- mt_tree@data$node[mt_tree@data$status == 1]
 size_factor <- setNames(rlnorm(length(tips), meanlog = 0, sdlog = 0.3), as.character(tips))
 counts_sf <- sim_expression_counts_matrix(expr_mat, mt_tree, phi = c(0.1, 0.3, 0.5),
                                           size_factor = size_factor)
+```
+
+`sim_count_params()` draws the dispersion of every gene (from a prior, or following a trend with the level
+of the gene) and the size factor of every cell, and can shift the expression so that the mean count has a
+given value:
+
+```{r}
+set.seed(5)
+count_params <- sim_count_params(expr_genes, mt_tree, genes, cell_size_sd = 0.5, target_mean_count = 2)
+counts_genes <- sim_expression_counts_matrix(count_params$expr, mt_tree, phi = count_params$phi,
+                                             size_factor = count_params$size_factor)
 ```
 
 ```{r}
